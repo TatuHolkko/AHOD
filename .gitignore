@@ -1,1 +1,7 @@
 *.mdk.local.ini
+
+obj/
+
+bin/
+
+.vs/
