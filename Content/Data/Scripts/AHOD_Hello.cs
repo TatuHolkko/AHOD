@@ -13,12 +13,13 @@ namespace AHOD
 
         public override void UpdateBeforeSimulation()
         {
-            if (!_init)
+            if (!init)
             {
-                MyLog.Default.WriteLine("AHOD: Initializing...");
+                lg = new Logger();
+                lg.Message("Init start.");
                 InitGrids();
-                MyLog.Default.WriteLine("AHOD: Initialization done.");
-                _init = true;
+                lg.Message("Init done.");
+                init = true;
             }
         }
 
@@ -26,8 +27,9 @@ namespace AHOD
         {
             HashSet<IMyEntity> entities = new HashSet<IMyEntity>();
             MyAPIGateway.Entities.GetEntities(entities, e => true);
-            MyAPIGateway.Utilities.ShowNotification($"AHOD: found {entities.Count} entities.", 20000, "White");
-            MyLog.Default.WriteLine($"AHOD: found {entities.Count} entities.");
+
+            lg.Message($"Found {entities.Count} entities.");
+
             foreach (IMyEntity ent in entities)
             {
                 var grid = ent as IMyCubeGrid;
@@ -36,12 +38,14 @@ namespace AHOD
                     continue;
                 }
                 string name = grid.DisplayName;
-                MyAPIGateway.Utilities.ShowNotification($"AHOD: found grid: {name}", 2000, "White");
-                MyLog.Default.WriteLine($"AHOD: Found grid: {name}");
+
+                lg.Message($"Found grid: {name}");
             }
         }
 
-        private HashSet<IMyCubeGrid> _grids;
-        private bool _init = false;
+        private HashSet<IMyCubeGrid> grids;
+        private bool init = false;
+
+        private Logger lg;
     }
 }
