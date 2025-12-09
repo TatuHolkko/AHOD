@@ -22,7 +22,7 @@ namespace AHOD
             }
             if (OnScreenLogging)
             {
-                MyAPIGateway.Utilities.ShowNotification(msg, 5000, "White");
+                MyAPIGateway.Utilities.ShowNotification(msg, 1000, "White");
             }
         }
 
