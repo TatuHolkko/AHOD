@@ -25,22 +25,36 @@ namespace AHOD
 
         private void InitGrids()
         {
+            grids = new HashSet<IMyCubeGrid>();
             HashSet<IMyEntity> entities = new HashSet<IMyEntity>();
-            MyAPIGateway.Entities.GetEntities(entities, e => true);
+            MyAPIGateway.Entities.GetEntities(entities, e => IsPlayerOwnedGrid(e));
 
             lg.Message($"Found {entities.Count} entities.");
 
             foreach (IMyEntity ent in entities)
             {
-                var grid = ent as IMyCubeGrid;
+                IMyCubeGrid grid = ent as IMyCubeGrid;
                 if (grid == null)
                 {
                     continue;
                 }
                 string name = grid.DisplayName;
-
                 lg.Message($"Found grid: {name}");
             }
+        }
+
+        private bool IsPlayerOwnedGrid(IMyEntity ent)
+        {
+            IMyCubeGrid grid = ent as IMyCubeGrid;
+            if (grid == null)
+            {
+                return false;
+            }
+            if (grid.SmallOwners.Contains(MyAPIGateway.Session.Player.IdentityId))
+            {
+                return true;
+            }
+            return false;
         }
 
         private HashSet<IMyCubeGrid> grids;
