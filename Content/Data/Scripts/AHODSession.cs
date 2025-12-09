@@ -12,7 +12,19 @@ namespace AHOD
     {
         const int UpdateInterval = 100;
 
-        public static readonly HashSet<string> BedSubtypes = new HashSet<string>
+        private static readonly Dictionary<string, int> BedRequirements = new Dictionary<string, int>
+        {
+            {"LargeRefinery", 5},
+            {"LargeRefineryIndustrial", 5},
+            {"LargePrototechRefinery", 10},
+            {"Blast Furnace", 3},
+            {"LargeAssembler", 5},
+            {"BasicAssembler", 2},
+            {"LargeAssemblerIndustrial", 5},
+            {"LargePrototechAssembler", 10},
+        };
+
+        private static readonly HashSet<string> BedSubtypes = new HashSet<string>
         {
             "LargeBlockBed",
             "LargeBlockHalfBed",
@@ -43,8 +55,21 @@ namespace AHOD
             foreach(IMyCubeGrid grid in grids)
             {
                 int beds = CountBeds(grid);
-                lg.Message($"Found {beds} beds in {grid.DisplayName}");
+                int bedsRequired = CountRequiredBeds(grid);
+                lg.Message($"Found {beds}/{bedsRequired} beds in {grid.DisplayName}");
             }
+        }
+
+        private int CountRequiredBeds(IMyCubeGrid grid)
+        {
+            List<IMySlimBlock> blocks = new List<IMySlimBlock>();
+            grid.GetBlocks(blocks, b => IsRequiring(b));
+            int sum = 0;
+            foreach(IMySlimBlock b in blocks)
+            {
+                sum += RequiredBeds(b);
+            }
+            return sum;
         }
 
         private int CountBeds(IMyCubeGrid grid)
@@ -54,11 +79,18 @@ namespace AHOD
             return blocks.Count;
         }
 
+
+
         private void Init()
         {
             lg = new Logger();
-            grids = new HashSet<IMyCubeGrid>();
             lg.Message("Init start.");
+            grids = new HashSet<IMyCubeGrid>();
+            requiringSubtypes = new HashSet<string>();
+            foreach(string subtype in BedRequirements.Keys)
+            {
+                requiringSubtypes.Add(subtype);
+            }
             ScanExistingGrids();
             lg.Message("Init done.");
         }
@@ -68,25 +100,40 @@ namespace AHOD
             grids.Clear();
             HashSet<IMyEntity> entities = new HashSet<IMyEntity>();
             MyAPIGateway.Entities.GetEntities(entities, e => IsPlayerOwnedGrid(e));
-
-            //lg.Message($"Found {entities.Count} player owned grids.");
-
             foreach (IMyEntity ent in entities)
             {
                 IMyCubeGrid grid = ent as IMyCubeGrid;
-                //lg.Message($"Found grid: {grid.DisplayName}");
                 grids.Add(grid);
             }
         }
 
+        private int RequiredBeds(IMySlimBlock block)
+        {
+            if (!IsRequiring(block))
+            {
+                return 0;
+            }
+            return BedRequirements[block.FatBlock.BlockDefinition.SubtypeId];
+        }
+
+        private bool IsRequiring(IMySlimBlock block)
+        {
+            return IsBlockCorrectType(block, requiringSubtypes);
+        }
+
         private bool IsBed(IMySlimBlock block)
+        {
+            return IsBlockCorrectType(block, BedSubtypes);
+        }
+
+        private bool IsBlockCorrectType(IMySlimBlock block, HashSet<string> subtypelist)
         {
             IMyCubeBlock cb = block.FatBlock;
             if (cb == null)
             {
                 return false;
             }
-            return BedSubtypes.Contains(cb.BlockDefinition.SubtypeId);
+            return subtypelist.Contains(cb.BlockDefinition.SubtypeId);
         }
 
         private bool IsPlayerOwnedGrid(IMyEntity ent)
@@ -110,6 +157,7 @@ namespace AHOD
         private bool init = false;
         private Logger lg;
         private int tickCounter = 0;
+        private HashSet<string> requiringSubtypes;
         private HashSet<IMyCubeGrid> grids;
     }
 }
