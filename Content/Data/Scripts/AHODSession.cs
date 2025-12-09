@@ -8,7 +8,7 @@ using VRage.Game.ModAPI;
 namespace AHOD
 {
     [MySessionComponentDescriptor(MyUpdateOrder.BeforeSimulation)]
-    public class AHOD_Hello : MySessionComponentBase
+    public class AHODSession : MySessionComponentBase
     {
 
         public override void UpdateBeforeSimulation()
