@@ -18,10 +18,14 @@ namespace AHOD
             }
             if (FileLogging)
             {
-                MyLog.Default.WriteLine("AHOD: " + msg);
+                MyLog.Default?.WriteLine("AHOD: " + msg);
             }
             if (OnScreenLogging)
             {
+                if (MyAPIGateway.Utilities == null && FileLogging)
+                {
+                    MyLog.Default?.WriteLine("AHOD: MyAPIGateway.Utilities not initialized yet, writing given message here: " + msg);
+                }
                 MyAPIGateway.Utilities.ShowNotification(msg, 1000, "White");
             }
         }
