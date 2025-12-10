@@ -4,6 +4,8 @@ using VRage.Game.Components;
 using System.Collections.Generic;
 using VRage.ModAPI;
 using VRage.Game.ModAPI;
+using System.Linq;
+using VRage.Game.VisualScripting.Utils;
 
 namespace AHOD
 {
@@ -11,27 +13,13 @@ namespace AHOD
     public class AHODSession : MySessionComponentBase
     {
         const int UpdateInterval = 100;
+        private bool init = false;
+        private Logger lg;
+        private int tickCounter = 0;
+        private HashSet<string> requiringSubtypes = new HashSet<string>();
+        private HashSet<IMyCubeGrid> grids = new HashSet<IMyCubeGrid>();
 
-        private static readonly Dictionary<string, int> BedRequirements = new Dictionary<string, int>
-        {
-            {"LargeRefinery", 5},
-            {"LargeRefineryIndustrial", 5},
-            {"LargePrototechRefinery", 10},
-            {"Blast Furnace", 3},
-            {"LargeAssembler", 5},
-            {"BasicAssembler", 2},
-            {"LargeAssemblerIndustrial", 5},
-            {"LargePrototechAssembler", 10},
-        };
-
-        private static readonly HashSet<string> BedSubtypes = new HashSet<string>
-        {
-            "LargeBlockBed",
-            "LargeBlockHalfBed",
-            "LargeBlockHalfBedOffset",
-            "LargeBlockInsetBed",
-            "LargeBlockBedFree",
-        };
+        AHODConfig config = new AHODConfig();
 
         public override void UpdateBeforeSimulation()
         {
@@ -85,11 +73,10 @@ namespace AHOD
         {
             lg = new Logger();
             lg.Message("Init start.");
-            grids = new HashSet<IMyCubeGrid>();
-            requiringSubtypes = new HashSet<string>();
-            foreach(string subtype in BedRequirements.Keys)
+            config.Load(ModContext);
+            foreach(BedRequirement req in config.BedRequirements)
             {
-                requiringSubtypes.Add(subtype);
+                requiringSubtypes.Add(req.SubtypeId);
             }
             ScanExistingGrids();
             lg.Message("Init done.");
@@ -113,7 +100,7 @@ namespace AHOD
             {
                 return 0;
             }
-            return BedRequirements[block.FatBlock.BlockDefinition.SubtypeId];
+            return config.BedRequirements.Find(r => r.SubtypeId == block.FatBlock.BlockDefinition.SubtypeId).Beds;
         }
 
         private bool IsRequiring(IMySlimBlock block)
@@ -123,10 +110,10 @@ namespace AHOD
 
         private bool IsBed(IMySlimBlock block)
         {
-            return IsBlockCorrectType(block, BedSubtypes);
+            return IsBlockCorrectType(block, config.BedSubtypeIds);
         }
 
-        private bool IsBlockCorrectType(IMySlimBlock block, HashSet<string> subtypelist)
+        private bool IsBlockCorrectType(IMySlimBlock block, IEnumerable<string> subtypelist)
         {
             IMyCubeBlock cb = block.FatBlock;
             if (cb == null)
@@ -153,11 +140,5 @@ namespace AHOD
             }
             return false;
         }
-
-        private bool init = false;
-        private Logger lg;
-        private int tickCounter = 0;
-        private HashSet<string> requiringSubtypes;
-        private HashSet<IMyCubeGrid> grids;
     }
 }
