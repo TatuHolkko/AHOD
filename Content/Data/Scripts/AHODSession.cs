@@ -44,7 +44,7 @@ namespace AHOD
             {
                 int beds = CountBeds(grid);
                 int bedsRequired = CountRequiredBeds(grid);
-                lg.Message($"Found {beds}/{bedsRequired} beds in {grid.DisplayName}");
+                lg.Message($"Found {beds}/{bedsRequired} beds in {grid.DisplayName}", 3);
             }
         }
 
@@ -72,14 +72,14 @@ namespace AHOD
         private void Init()
         {
             lg = new Logger();
-            lg.Message("Init start.");
+            lg.Message("Init start.", 2);
             config.Load(ModContext);
             foreach(BedRequirement req in config.BedRequirements)
             {
                 requiringSubtypes.Add(req.SubtypeId);
             }
             ScanExistingGrids();
-            lg.Message("Init done.");
+            lg.Message("Init done.", 2);
         }
 
         private void ScanExistingGrids()

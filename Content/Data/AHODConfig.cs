@@ -16,6 +16,8 @@ namespace AHOD
         const string FileName = "Config.ini";
         const string IniSection = "Config";
 
+
+        public int DebugLevel = 1;
         public List<BedRequirement> BedRequirements = new List<BedRequirement>();
         public List<string> BedSubtypeIds = new List<string>();
 
@@ -70,18 +72,20 @@ namespace AHOD
         {
             BedRequirements = ParseBedRequirements(iniParser.Get(IniSection, nameof(BedRequirements)).ToString(""));
             BedSubtypeIds = ParseSubtypes(iniParser.Get(IniSection, nameof(BedSubtypeIds)).ToString(""));
+            DebugLevel = iniParser.Get(IniSection, nameof(DebugLevel)).ToInt32(1);
         }
 
         void SaveConfig(MyIni iniParser, bool toWorld = false, bool toFile = false)
         {
             iniParser.Set(IniSection, nameof(BedRequirements), EncodeBedRequirements(BedRequirements));
             iniParser.Set(IniSection, nameof(BedSubtypeIds), String.Join(";", BedSubtypeIds));
+            iniParser.Set(IniSection, nameof(DebugLevel), DebugLevel);
 
             if (toWorld)
             {
                 string iniText = iniParser.ToString();
                 MyAPIGateway.Utilities.SetVariable<string>(VariableId, iniText);
-                lg.Message("Config saved to world.");
+                lg.Message("Config saved to world.", 2);
             }
 
             if (toFile)
@@ -91,7 +95,7 @@ namespace AHOD
                 {
                     file.Write(iniText);
                 }
-                lg.Message("Config saved to file.");
+                lg.Message("Config saved to file.", 2);
             }
         }
 
@@ -102,13 +106,13 @@ namespace AHOD
 
             if (savePath == null || gamePath == null || savePath.StartsWith(MyAPIGateway.Utilities.GamePaths.ContentPath))
             {
-                lg.Message("Delaying world config loading because of world creation bugs...");
+                lg.Message("Delaying world config loading because of world creation bugs...", 2);
                 MyAPIGateway.Utilities.InvokeOnGameThread(LoadOnHost);
                 return;
             }
 
             MyIni iniParser = new MyIni();
-
+            lg.Message("Loading config from file...", 2);
             if (MyAPIGateway.Utilities.FileExistsInWorldStorage(FileName, typeof(AHODConfig)))
             {
                 using (TextReader file = MyAPIGateway.Utilities.ReadFileInWorldStorage(FileName, typeof(AHODConfig)))
@@ -122,7 +126,7 @@ namespace AHOD
                     }
 
                     LoadConfig(iniParser);
-                    lg.Message("World config loaded!");
+                    lg.Message("Config loaded from file.");
                 }
             }
 
@@ -133,6 +137,7 @@ namespace AHOD
 
         void LoadOnClient()
         {
+            lg.Message("Loading config from sandbox.sbc...", 2);
             string text;
             if(!MyAPIGateway.Utilities.GetVariable<string>(VariableId, out text))
             {
@@ -147,7 +152,7 @@ namespace AHOD
             }
 
             LoadConfig(iniParser);
-            lg.Message("World config loaded!");
+            lg.Message("Config loaded from sandbox.sbc.");
         }
 
         string EncodeBedRequirements(List<BedRequirement> reqs)
@@ -194,7 +199,7 @@ namespace AHOD
             {
                 if (!kvpair.Contains(":"))
                 {
-                    lg.Message($"ERROR: Invalid bed requirement list item '{kvpair}', the correct format is: 'Subtype:NubmerOfBeds'.");
+                    lg.Message($"ERROR: Invalid bed requirement list item '{kvpair}', the correct format is: 'Subtype:NubmerOfBeds'.", 0);
                     continue;
                 }
                 string subtype = kvpair.Split(':')[0];
@@ -205,7 +210,7 @@ namespace AHOD
                 }
                 else
                 {
-                    lg.Message($"ERROR: Invalid number of beds '{numBeds}', must be an integer.");
+                    lg.Message($"ERROR: Invalid number of beds '{numBeds}', must be an integer.", 0);
                 }
             }
             return reqs;

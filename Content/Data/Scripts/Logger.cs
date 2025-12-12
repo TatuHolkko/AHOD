@@ -5,13 +5,21 @@ namespace AHOD
 {
     public class Logger
     {
+        public bool Enabled { get; set; } = true;
+        public bool FileLogging { get; set; } = true;
+        public bool OnScreenLogging { get; set; } = true;
+        public int DebugLevel { get; set; } = 1;
         public Logger()
         {
 
         }
 
-        public void Message(string msg)
+        public void Message(string msg, int level = 1)
         {
+            if (level > DebugLevel)
+            {
+                return;
+            }
             if (!Enabled)
             {
                 return;
@@ -30,8 +38,5 @@ namespace AHOD
             }
         }
 
-        public bool Enabled { get; set; } = true;
-        public bool FileLogging { get; set; } = true;
-        public bool OnScreenLogging { get; set; } = true;
     }
 }
