@@ -4,9 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Sandbox.ModAPI;
-using VRage.Game.ModAPI;
 using VRage.Game.ModAPI.Ingame.Utilities;
-using VRage.Scripting;
 
 namespace AHOD
 {
@@ -15,15 +13,10 @@ namespace AHOD
         const string VariableId = nameof(AHODSession);
         const string FileName = "Config.ini";
         const string IniSection = "Config";
-
-
         public int DebugLevel = 1;
         public List<BedRequirement> BedRequirements = new List<BedRequirement>();
         public List<string> BedSubtypeIds = new List<string>();
-
         Logger lg = new Logger();
-
-        IMyModContext Mod;
 
         public AHODConfig()
         {
@@ -50,13 +43,16 @@ namespace AHOD
             };
         }
 
-        public void Load(IMyModContext mod)
+        public void Export()
         {
-            Mod = mod;
+            MyIni iniParser = new MyIni();
+            PopulateIniParser(iniParser);
+            ExportToFile(iniParser);
+            ExportToSBC(iniParser);
+        }
 
-            SaveConfig(new MyIni(), true, true);
-            return;
-
+        public void Load()
+        {
             if (MyAPIGateway.Session.IsServer)
             {
                 LoadOnHost();
@@ -65,38 +61,35 @@ namespace AHOD
             {
                 LoadOnClient();
             }
-
         }
 
-        void LoadConfig(MyIni iniParser)
+        void ApplyConfig(MyIni iniParser)
         {
             BedRequirements = ParseBedRequirements(iniParser.Get(IniSection, nameof(BedRequirements)).ToString(""));
             BedSubtypeIds = ParseSubtypes(iniParser.Get(IniSection, nameof(BedSubtypeIds)).ToString(""));
             DebugLevel = iniParser.Get(IniSection, nameof(DebugLevel)).ToInt32(1);
         }
 
-        void SaveConfig(MyIni iniParser, bool toWorld = false, bool toFile = false)
+        void PopulateIniParser(MyIni iniParser)
         {
             iniParser.Set(IniSection, nameof(BedRequirements), EncodeBedRequirements(BedRequirements));
             iniParser.Set(IniSection, nameof(BedSubtypeIds), String.Join(";", BedSubtypeIds));
             iniParser.Set(IniSection, nameof(DebugLevel), DebugLevel);
+        }
 
-            if (toWorld)
+        void ExportToFile(MyIni iniParser)
+        {
+            using (TextWriter file = MyAPIGateway.Utilities.WriteFileInWorldStorage(FileName, typeof(AHODConfig)))
             {
-                string iniText = iniParser.ToString();
-                MyAPIGateway.Utilities.SetVariable<string>(VariableId, iniText);
-                lg.Message("Config saved to world.", 2);
+                file.Write(iniParser.ToString());
             }
+            lg.Message("Config exported to world storage file.", 2);
+        }
 
-            if (toFile)
-            {
-                string iniText = iniParser.ToString();
-                using (TextWriter file = MyAPIGateway.Utilities.WriteFileInWorldStorage(FileName, typeof(AHODConfig)))
-                {
-                    file.Write(iniText);
-                }
-                lg.Message("Config saved to file.", 2);
-            }
+        void ExportToSBC(MyIni iniParser)
+        {
+            MyAPIGateway.Utilities.SetVariable<string>(VariableId, iniParser.ToString());
+            lg.Message("Config exported to sandbox.sbc.", 2);
         }
 
         void LoadOnHost()
@@ -125,33 +118,38 @@ namespace AHOD
                         throw new Exception($"Config error: {result.ToString()}");
                     }
 
-                    LoadConfig(iniParser);
+                    ApplyConfig(iniParser);
                     lg.Message("Config loaded from file.");
                 }
             }
-
-            iniParser.Clear();
-
-            SaveConfig(iniParser, true, true);
+            else
+            {
+                lg.Message("No config file found, creating default config.");
+                PopulateIniParser(iniParser);
+                ExportToFile(iniParser);
+            }
         }
 
         void LoadOnClient()
         {
             lg.Message("Loading config from sandbox.sbc...", 2);
+            MyIni iniParser = new MyIni();
             string text;
             if(!MyAPIGateway.Utilities.GetVariable<string>(VariableId, out text))
             {
-                throw new Exception("No config found in sandbox.sbc!");
+                lg.Message("No config found in sandbox.sbc, creating one from defaults.");
+                PopulateIniParser(iniParser);
+                ExportToSBC(iniParser);
+                return;
             }
 
-            MyIni iniParser = new MyIni();
             MyIniParseResult result;
             if(!iniParser.TryParse(text, out result))
             {
                 throw new Exception($"Config error: {result.ToString()}");
             }
 
-            LoadConfig(iniParser);
+            ApplyConfig(iniParser);
             lg.Message("Config loaded from sandbox.sbc.");
         }
 

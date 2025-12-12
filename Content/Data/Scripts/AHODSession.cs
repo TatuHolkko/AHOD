@@ -73,7 +73,9 @@ namespace AHOD
         {
             lg = new Logger();
             lg.Message("Init start.", 2);
-            config.Load(ModContext);
+            //TODO: Remove export before load in release build
+            config.Export();
+            config.Load();
             foreach(BedRequirement req in config.BedRequirements)
             {
                 requiringSubtypes.Add(req.SubtypeId);
