@@ -83,13 +83,13 @@ namespace AHOD
             {
                 file.Write(iniParser.ToString());
             }
-            lg.Message("Config exported to world storage file.", 2);
+            lg.File("Config exported to world storage file.", 2);
         }
 
         void ExportToSBC(MyIni iniParser)
         {
             MyAPIGateway.Utilities.SetVariable<string>(VariableId, iniParser.ToString());
-            lg.Message("Config exported to sandbox.sbc.", 2);
+            lg.File("Config exported to sandbox.sbc.", 2);
         }
 
         void LoadOnHost()
@@ -99,13 +99,13 @@ namespace AHOD
 
             if (savePath == null || gamePath == null || savePath.StartsWith(MyAPIGateway.Utilities.GamePaths.ContentPath))
             {
-                lg.Message("Delaying world config loading because of world creation bugs...", 2);
+                lg.File("Delaying world config loading because of world creation bugs...", 2);
                 MyAPIGateway.Utilities.InvokeOnGameThread(LoadOnHost);
                 return;
             }
 
             MyIni iniParser = new MyIni();
-            lg.Message("Loading config from file...", 2);
+            lg.File("Loading config from file...", 2);
             if (MyAPIGateway.Utilities.FileExistsInWorldStorage(FileName, typeof(AHODConfig)))
             {
                 using (TextReader file = MyAPIGateway.Utilities.ReadFileInWorldStorage(FileName, typeof(AHODConfig)))
@@ -119,12 +119,12 @@ namespace AHOD
                     }
 
                     ApplyConfig(iniParser);
-                    lg.Message("Config loaded from file.");
+                    lg.File("Config loaded from file.");
                 }
             }
             else
             {
-                lg.Message("No config file found, creating default config.");
+                lg.File("No config file found, creating default config.");
                 PopulateIniParser(iniParser);
                 ExportToFile(iniParser);
             }
@@ -132,12 +132,12 @@ namespace AHOD
 
         void LoadOnClient()
         {
-            lg.Message("Loading config from sandbox.sbc...", 2);
+            lg.File("Loading config from sandbox.sbc...", 2);
             MyIni iniParser = new MyIni();
             string text;
             if(!MyAPIGateway.Utilities.GetVariable<string>(VariableId, out text))
             {
-                lg.Message("No config found in sandbox.sbc, creating one from defaults.");
+                lg.File("No config found in sandbox.sbc, creating one from defaults.");
                 PopulateIniParser(iniParser);
                 ExportToSBC(iniParser);
                 return;
@@ -150,7 +150,7 @@ namespace AHOD
             }
 
             ApplyConfig(iniParser);
-            lg.Message("Config loaded from sandbox.sbc.");
+            lg.File("Config loaded from sandbox.sbc.");
         }
 
         string EncodeBedRequirements(List<BedRequirement> reqs)
@@ -197,7 +197,7 @@ namespace AHOD
             {
                 if (!kvpair.Contains(":"))
                 {
-                    lg.Message($"ERROR: Invalid bed requirement list item '{kvpair}', the correct format is: 'Subtype:NubmerOfBeds'.", 0);
+                    lg.File($"ERROR: Invalid bed requirement list item '{kvpair}', the correct format is: 'Subtype:NubmerOfBeds'.", 0);
                     continue;
                 }
                 string subtype = kvpair.Split(':')[0];
@@ -208,7 +208,7 @@ namespace AHOD
                 }
                 else
                 {
-                    lg.Message($"ERROR: Invalid number of beds '{numBeds}', must be an integer.", 0);
+                    lg.File($"ERROR: Invalid number of beds '{numBeds}', must be an integer.", 0);
                 }
             }
             return reqs;

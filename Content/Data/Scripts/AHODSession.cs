@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using VRage.ModAPI;
 using VRage.Game.ModAPI;
 using System.Linq;
-using VRage.Game.VisualScripting.Utils;
 
 namespace AHOD
 {
@@ -44,7 +43,7 @@ namespace AHOD
             {
                 int beds = CountBeds(grid);
                 int bedsRequired = CountRequiredBeds(grid);
-                lg.Message($"Found {beds}/{bedsRequired} beds in {grid.DisplayName}", 3);
+                lg.OnScreen($"Found {beds}/{bedsRequired} beds in {grid.DisplayName}", 3);
             }
         }
 
@@ -71,8 +70,8 @@ namespace AHOD
 
         private void Init()
         {
-            lg = new Logger();
-            lg.Message("Init start.", 2);
+            lg = new Logger(){ DebugLevel = 3, AvoidDuplicates = false };
+            lg.File("Init start.", 2);
             //TODO: Remove export before load in release build
             config.Export();
             config.Load();
@@ -81,7 +80,7 @@ namespace AHOD
                 requiringSubtypes.Add(req.SubtypeId);
             }
             ScanExistingGrids();
-            lg.Message("Init done.", 2);
+            lg.File("Init done.", 2);
         }
 
         private void ScanExistingGrids()
