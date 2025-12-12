@@ -16,10 +16,18 @@ namespace AHOD
         public int DebugLevel = 1;
         public List<BedRequirement> BedRequirements = new List<BedRequirement>();
         public List<string> BedSubtypeIds = new List<string>();
-        Logger lg = new Logger();
+        Logger lg;
 
-        public AHODConfig()
+        public AHODConfig(Logger logger = null)
         {
+            if (logger != null)
+            {
+                lg = logger;
+            }
+            else
+            {
+                lg = new Logger();
+            }
             // Default values
             BedRequirements = new List<BedRequirement>
             {
@@ -65,7 +73,9 @@ namespace AHOD
 
         void ApplyConfig(MyIni iniParser)
         {
-            BedRequirements = ParseBedRequirements(iniParser.Get(IniSection, nameof(BedRequirements)).ToString(""));
+            string bedReqStr = iniParser.Get(IniSection, nameof(BedRequirements)).ToString("");
+            lg.File("Parsing BedRequirements: " + bedReqStr, 3);
+            BedRequirements = ParseBedRequirements(bedReqStr);
             BedSubtypeIds = ParseSubtypes(iniParser.Get(IniSection, nameof(BedSubtypeIds)).ToString(""));
             DebugLevel = iniParser.Get(IniSection, nameof(DebugLevel)).ToInt32(1);
         }
@@ -135,7 +145,7 @@ namespace AHOD
             lg.File("Loading config from sandbox.sbc...", 2);
             MyIni iniParser = new MyIni();
             string text;
-            if(!MyAPIGateway.Utilities.GetVariable<string>(VariableId, out text))
+            if (!MyAPIGateway.Utilities.GetVariable<string>(VariableId, out text))
             {
                 lg.File("No config found in sandbox.sbc, creating one from defaults.");
                 PopulateIniParser(iniParser);
@@ -144,7 +154,7 @@ namespace AHOD
             }
 
             MyIniParseResult result;
-            if(!iniParser.TryParse(text, out result))
+            if (!iniParser.TryParse(text, out result))
             {
                 throw new Exception($"Config error: {result.ToString()}");
             }
@@ -181,8 +191,9 @@ namespace AHOD
             }
             foreach (string type in datastring.Split(';'))
             {
-                types.Append(type);
+                types.Add(type);
             }
+            lg.File($"Parsed {types.Count} bed subtypes.", 3);
             return types;
         }
 
@@ -191,10 +202,12 @@ namespace AHOD
             List<BedRequirement> reqs = new List<BedRequirement>();
             if (datastring == "")
             {
+                lg.File("No bed requirements specified in config.", 3);
                 return reqs;
             }
             foreach (string kvpair in datastring.Split(';'))
             {
+                lg.File($"Parsing bed requirement: {kvpair}", 4);
                 if (!kvpair.Contains(":"))
                 {
                     lg.File($"ERROR: Invalid bed requirement list item '{kvpair}', the correct format is: 'Subtype:NubmerOfBeds'.", 0);
@@ -204,13 +217,14 @@ namespace AHOD
                 string numBeds = kvpair.Split(':')[1];
                 if (numBeds.All(Char.IsDigit))
                 {
-                    reqs.Append(new BedRequirement() { SubtypeId = subtype, Beds = int.Parse(numBeds) });
+                    reqs.Add(new BedRequirement() { SubtypeId = subtype, Beds = int.Parse(numBeds) });
                 }
                 else
                 {
                     lg.File($"ERROR: Invalid number of beds '{numBeds}', must be an integer.", 0);
                 }
             }
+            lg.File($"Parsed {reqs.Count} bed requirements.", 3);
             return reqs;
         }
     }

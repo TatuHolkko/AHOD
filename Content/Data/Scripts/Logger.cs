@@ -5,6 +5,7 @@ namespace AHOD
 {
     public class Logger
     {
+        public const int MaxDebugLevel = 5;
         public bool Enabled { get; set; } = true;
         public bool FileLogging { get; set; } = true;
         public bool OnScreenLogging { get; set; } = true;
@@ -71,6 +72,5 @@ namespace AHOD
             lastMsg = msg;
             return false;
         }
-
     }
 }

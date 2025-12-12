@@ -18,7 +18,7 @@ namespace AHOD
         private HashSet<string> requiringSubtypes = new HashSet<string>();
         private HashSet<IMyCubeGrid> grids = new HashSet<IMyCubeGrid>();
 
-        AHODConfig config = new AHODConfig();
+        AHODConfig config;
 
         public override void UpdateBeforeSimulation()
         {
@@ -36,6 +36,23 @@ namespace AHOD
             }
         }
 
+        private void Init()
+        {
+            lg = new Logger(){ DebugLevel = Logger.MaxDebugLevel};
+            lg.File("Init start.", 2);
+            config = new AHODConfig(lg);
+            //TODO: Remove export before load in release build
+            config.Export();
+            config.Load();
+            foreach(BedRequirement req in config.BedRequirements)
+            {
+                requiringSubtypes.Add(req.SubtypeId);
+                lg.File($"Requiring subtype added: {req.SubtypeId} requires {req.Beds} beds.", 3);
+            }
+            ScanExistingGrids();
+            lg.File("Init done.", 2);
+        }
+
         private void UpdateGrids()
         {
             ScanExistingGrids();
@@ -43,7 +60,7 @@ namespace AHOD
             {
                 int beds = CountBeds(grid);
                 int bedsRequired = CountRequiredBeds(grid);
-                lg.OnScreen($"Found {beds}/{bedsRequired} beds in {grid.DisplayName}", 3);
+                lg.OnScreen($"Found {beds}/{bedsRequired} beds in {grid.DisplayName}", force: true);
             }
         }
 
@@ -68,20 +85,6 @@ namespace AHOD
 
 
 
-        private void Init()
-        {
-            lg = new Logger(){ DebugLevel = 3, AvoidDuplicates = false };
-            lg.File("Init start.", 2);
-            //TODO: Remove export before load in release build
-            config.Export();
-            config.Load();
-            foreach(BedRequirement req in config.BedRequirements)
-            {
-                requiringSubtypes.Add(req.SubtypeId);
-            }
-            ScanExistingGrids();
-            lg.File("Init done.", 2);
-        }
 
         private void ScanExistingGrids()
         {
