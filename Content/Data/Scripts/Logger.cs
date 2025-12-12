@@ -34,7 +34,7 @@ namespace AHOD
             {
                 MyLog.Default?.WriteLine("AHOD: MyAPIGateway.Utilities not initialized yet, writing given message here: " + msg);
             }
-            MyAPIGateway.Utilities.ShowNotification(msg, durationMs, "White");
+            MyAPIGateway.Utilities.ShowNotification(msg, durationMs, color);
         }
 
         public void File(string msg, int level = 1, bool force = false)
