@@ -5,12 +5,20 @@ namespace AHOD
 {
     public class Logger
     {
+        /* Debug Levels:
+            0 - Errors Only
+            1 - Standard Info for Deployed Use
+            2 - Standard Info For Development
+            3 - Standard Info for Debugging
+            4 - Detailed Debugging
+            5 - Excessive Debugging
+            */
+        public int DebugLevel { get; set; } = 1;
         public const int MaxDebugLevel = 5;
         public bool Enabled { get; set; } = true;
         public bool FileLogging { get; set; } = true;
         public bool OnScreenLogging { get; set; } = true;
         public bool AvoidDuplicates { get; set; } = true;
-        public int DebugLevel { get; set; } = 1;
         private string lastMsg = "";
         public Logger()
         {

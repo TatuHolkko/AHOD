@@ -9,60 +9,93 @@ namespace AHOD
     [MySessionComponentDescriptor(MyUpdateOrder.BeforeSimulation)]
     public class AHODSession : MySessionComponentBase
     {
-        const int UpdateInterval = 100;
-        private int tickCounter = 0;
-        private HashSet<IMyCubeGrid> grids = new HashSet<IMyCubeGrid>();
+        private Dictionary<long, Grid> grids = new Dictionary<long, Grid>();
         private Logger lg;
         AHODConfig config;
 
-        public override void UpdateBeforeSimulation()
+        public override void LoadData()
         {
-            tickCounter++;
-            if (tickCounter == UpdateInterval)
+            Init();
+            MyAPIGateway.Entities.OnEntityAdd += EntityAdded;
+        }
+
+        protected override void UnloadData()
+        {
+            MyAPIGateway.Entities.OnEntityAdd -= EntityAdded;
+
+            ClearGrids();
+            lg.File("AHODSession unloaded.", 2);
+        }
+
+        private void EntityAdded(IMyEntity ent)
+        {
+            if (IsPlayerOwnedGrid(ent))
             {
-                tickCounter = 0;
-                UpdateGrids();
+                IMyCubeGrid cubeGrid = ent as IMyCubeGrid;
+
+                lg.File($"EntityAdded: New grid detected: {cubeGrid.DisplayName}", 2);
+                lg.OnScreen($"EntityAdded: New grid detected: {cubeGrid.DisplayName}", durationMs: 2000, level: 3, color: "White");
+
+                Grid grid = new Grid(cubeGrid, config, lg);
+                grid.ScanGrid();
+                grid.Update();
+
+                grids.Add(cubeGrid.EntityId, grid);
+
+                cubeGrid.OnMarkForClose += GridMarkedForClose;
+                cubeGrid.OnBlockAdded += grid.AddBlock;
+                cubeGrid.OnBlockRemoved += grid.RemoveBlock;
             }
         }
 
-        public override void BeforeStart()
+        private void GridMarkedForClose(IMyEntity ent)
         {
-            base.BeforeStart();
-            Init();
+            lg.File($"Grid marked for close: {ent.DisplayName}", 2);
+            RemoveGrid(ent as IMyCubeGrid);
+        }
+
+        private void ClearGrids()
+        {
+            foreach (KeyValuePair<long, Grid> pair in grids)
+            {
+                IMyCubeGrid cubeGrid = pair.Value?.CubeGrid;
+                if (cubeGrid != null)
+                {
+                    RemoveGrid(pair.Value.CubeGrid);
+                }
+                else
+                {
+                    lg.File($"Warning: Attempted to remove null grid with EntityId {pair.Key}", 1);
+                }
+            }
+        }
+
+        private void RemoveGrid(IMyCubeGrid cubeGrid)
+        {
+            if (grids.ContainsKey(cubeGrid.EntityId))
+            {
+                Grid grid = grids[cubeGrid.EntityId];
+                cubeGrid.OnMarkForClose -= GridMarkedForClose;
+                cubeGrid.OnBlockAdded -= grid.AddBlock;
+                cubeGrid.OnBlockRemoved -= grid.RemoveBlock;
+                grids.Remove(cubeGrid.EntityId);
+            }
+            else
+            {
+                lg.File($"Warning: Attempted to remove grid that is not tracked: {cubeGrid.DisplayName}", 1);
+            }
         }
 
         private void Init()
         {
-            lg = new Logger(){ DebugLevel = 3};
+            //TODO: Read debug level from config
+            lg = new Logger() { DebugLevel = 3 };
             lg.File("Init start.", 2);
             config = new AHODConfig(lg);
             //TODO: Remove export before load in release build
             config.Export();
             config.Load();
             lg.File("Init done.", 2);
-        }
-
-        private void UpdateGrids()
-        {
-            ScanExistingGrids();
-            foreach(IMyCubeGrid grid in grids)
-            {
-                Grid g = new Grid(grid, config, lg);
-                g.ScanGrid();
-                g.Update();
-            }
-        }
-
-        private void ScanExistingGrids()
-        {
-            grids.Clear();
-            HashSet<IMyEntity> entities = new HashSet<IMyEntity>();
-            MyAPIGateway.Entities.GetEntities(entities, e => IsPlayerOwnedGrid(e));
-            foreach (IMyEntity ent in entities)
-            {
-                IMyCubeGrid grid = ent as IMyCubeGrid;
-                grids.Add(grid);
-            }
         }
 
         private bool IsPlayerOwnedGrid(IMyEntity ent)

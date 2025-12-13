@@ -31,6 +31,48 @@ namespace AHOD
             }
         }
 
+        public void AddBlock(IMySlimBlock block)
+        {
+            if (IsBed(block))
+            {
+                ChangeBedCount(1);
+            }
+            if (RequiresBeds(block))
+            {
+                foreach (BedRequirement br in config.BedRequirements)
+                {
+                    IMyCubeBlock cb = block.FatBlock;
+                    if (cb.BlockDefinition.SubtypeId == br.SubtypeId)
+                    {
+                        ChangeRequiredBedCount(br.Beds);
+                        break;
+                    }
+                }
+            }
+            Update();
+        }
+
+        public void RemoveBlock(IMySlimBlock block)
+        {
+            if (IsBed(block))
+            {
+                ChangeBedCount(-1);
+            }
+            if (RequiresBeds(block))
+            {
+                foreach (BedRequirement br in config.BedRequirements)
+                {
+                    IMyCubeBlock cb = block.FatBlock;
+                    if (cb.BlockDefinition.SubtypeId == br.SubtypeId)
+                    {
+                        ChangeRequiredBedCount(-br.Beds);
+                        break;
+                    }
+                }
+            }
+            Update();
+        }
+
         public void ScanGrid()
         {
             BedCount = CountBeds();
