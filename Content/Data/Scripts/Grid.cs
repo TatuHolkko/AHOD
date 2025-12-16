@@ -16,7 +16,14 @@ namespace AHOD
         {
             CubeGrid = grid;
             this.config = config;
-            lg = logger;
+            lg = new Logger() {
+                GridName = grid.DisplayName,
+                AvoidDuplicates = logger.AvoidDuplicates,
+                DebugLevel = logger.DebugLevel,
+                Enabled = logger.Enabled,
+                FileLogging = logger.FileLogging,
+                OnScreenLogging = logger.OnScreenLogging
+                };
         }
 
         public void Update()
@@ -25,19 +32,20 @@ namespace AHOD
             RecalculateEfficency();
             if (oldEfficiency != Efficiency)
             {
-                lg.File($"Grid {CubeGrid.DisplayName} efficiency updated: {Efficiency:P0}", 2);
-                lg.OnScreen($"Grid {CubeGrid.DisplayName} efficiency updated: {Efficiency:P0}", durationMs: 2000, level: 3, color: "White", force: true);
+                lg.File($"Efficiency updated: {Efficiency:P0}", 2);
+                lg.OnScreen($"Efficiency updated: {Efficiency:P0}", durationMs: 2000, level: 3, color: "White", force: true);
                 ApplyNewEfficiency();
             }
         }
 
         public void AddBlock(IMySlimBlock block)
         {
+            lg.File($"Adding block {block?.FatBlock?.BlockDefinition.SubtypeId}", 3);
             if (IsBed(block))
             {
                 ChangeBedCount(1);
             }
-            if (RequiresBeds(block))
+            else if (RequiresBeds(block))
             {
                 foreach (BedRequirement br in config.BedRequirements)
                 {
@@ -54,11 +62,12 @@ namespace AHOD
 
         public void RemoveBlock(IMySlimBlock block)
         {
+            lg.File($"Removing block {block?.FatBlock?.BlockDefinition.SubtypeId}", 3);
             if (IsBed(block))
             {
                 ChangeBedCount(-1);
             }
-            if (RequiresBeds(block))
+            else if (RequiresBeds(block))
             {
                 foreach (BedRequirement br in config.BedRequirements)
                 {
@@ -77,29 +86,29 @@ namespace AHOD
         {
             BedCount = CountBeds();
             RequiredBedCount = CountRequiredBeds();
-            lg.File($"Scanned grid {CubeGrid.DisplayName}: BedCount={BedCount}, RequiredBedCount={RequiredBedCount}", 2);
+            lg.File($"Scanned: BC={BedCount}, RBC={RequiredBedCount}", 2);
         }
 
         public void ChangeBedCount(int amount)
         {
-            lg.File($"Changing BedCount for grid {CubeGrid.DisplayName} by {amount}. Current BedCount: {BedCount}.", 3);
+            lg.File($"Changing BedCount by {amount}, new value {BedCount + amount}.", 3);
             BedCount += amount;
             if (BedCount < 0)
             {
-                lg.File($"Warning: BedCount for grid {CubeGrid.DisplayName} went below zero. Resetting to zero.", 1);
-                lg.OnScreen($"Warning: BedCount for grid {CubeGrid.DisplayName} went below zero. Resetting to zero.", durationMs: 2000, level: 2, color: "Red");
+                lg.File($"Warning: BedCount went below zero. Resetting to zero.", 1);
+                lg.OnScreen($"Warning: BedCount went below zero. Resetting to zero.", durationMs: 2000, level: 2, color: "Red");
                 BedCount = 0;
             }
         }
 
         public void ChangeRequiredBedCount(int amount)
         {
-            lg.File($"Changing RequiredBedCount for grid {CubeGrid.DisplayName} by {amount}. Current RequiredBedCount: {RequiredBedCount}.", 3);
+            lg.File($"Changing RequiredBedCount by {amount}, new value {RequiredBedCount + amount}.", 3);
             RequiredBedCount += amount;
             if (RequiredBedCount < 0)
             {
-                lg.File($"Warning: RequiredBedCount for grid {CubeGrid.DisplayName} went below zero. Resetting to zero.", 1);
-                lg.OnScreen($"Warning: RequiredBedCount for grid {CubeGrid.DisplayName} went below zero. Resetting to zero.", durationMs: 2000, level: 2, color: "Red");
+                lg.File($"Warning: RequiredBedCount went below zero. Resetting to zero.", 1);
+                lg.OnScreen($"Warning: RequiredBedCount went below zero. Resetting to zero.", durationMs: 2000, level: 2, color: "Red");
                 RequiredBedCount = 0;
             }
         }

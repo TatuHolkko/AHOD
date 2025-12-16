@@ -35,6 +35,10 @@ namespace AHOD
         /// Avoid logging duplicate messages in a row. Force overrides this.
         /// </summary>
         public bool AvoidDuplicates { get; set; } = true;
+        /// <summary>
+        /// Name of the grid for logging context
+        /// </summary>
+        public string GridName { get; set; } = "";
 
         private string lastMsg = "";
         public Logger()
@@ -64,9 +68,9 @@ namespace AHOD
             }
             if (MyAPIGateway.Utilities == null && FileLogging)
             {
-                MyLog.Default?.WriteLine("AHOD: MyAPIGateway.Utilities not initialized yet, writing given message here: " + msg);
+                MyLog.Default?.WriteLine($"AHOD:[{GridName}] MyAPIGateway.Utilities not initialized yet, writing given message here: " + msg);
             }
-            MyAPIGateway.Utilities.ShowNotification(msg, durationMs, color);
+            MyAPIGateway.Utilities.ShowNotification($"[{GridName}] " + msg, durationMs, color);
         }
         /// <summary>
         /// Logs a message to file. If file logging is not available, does nothing.
@@ -87,7 +91,7 @@ namespace AHOD
                     return;
                 }
             }
-            MyLog.Default?.WriteLine("AHOD: " + msg);
+            MyLog.Default?.WriteLine($"AHOD: [{GridName}] " + msg);
         }
         /// <summary>
         /// Checks if the given message is a duplicate of the last logged message. If not, updates the last message.
