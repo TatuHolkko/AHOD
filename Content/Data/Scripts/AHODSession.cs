@@ -9,7 +9,8 @@ namespace AHOD
     [MySessionComponentDescriptor(MyUpdateOrder.BeforeSimulation)]
     public class AHODSession : MySessionComponentBase
     {
-        private Dictionary<long, Grid> grids = new Dictionary<long, Grid>();
+        private Dictionary<long, Grid> activeGrids = new Dictionary<long, Grid>();
+        private Dictionary<long, IMyCubeGrid> passiveGrids = new Dictionary<long, IMyCubeGrid>();
         private Logger lg;
         AHODConfig config;
 
@@ -24,72 +25,124 @@ namespace AHOD
         {
             lg.File("Unloading AHODSession.", 2);
             MyAPIGateway.Entities.OnEntityAdd -= EntityAdded;
-            ClearGrids();
+            UnregisterAll();
             lg.File("AHODSession unloaded.", 2);
         }
 
         private void EntityAdded(IMyEntity ent)
         {
-            //TODO: If grid is created as non player owned, then later gets a player owner, we won't track it.
-            if (IsPlayerOwnedGrid(ent))
+            if (!IsGrid(ent))
             {
-                IMyCubeGrid cubeGrid = ent as IMyCubeGrid;
-                lg.File($"Entity added: {cubeGrid.DisplayName}", 2);
-                RegisterGrid(cubeGrid);
+                return;
+            }
+            IMyCubeGrid cubeGrid = ent as IMyCubeGrid;
+            if (IsPlayerOwnedGrid(cubeGrid))
+            {
+                RegisterActiveGrid(cubeGrid);
+            }
+            else
+            {
+                RegisterPassiveGrid(cubeGrid);
             }
         }
 
-        private void GridClose(IMyEntity ent)
+        private void ActiveGridClose(IMyEntity ent)
         {
             lg.File($"Closing grid: {ent.DisplayName}", 2);
-            RemoveGrid(ent as IMyCubeGrid);
+            UnregisterActiveGrid(ent as IMyCubeGrid);
         }
 
-        private void ClearGrids()
+        private void UnregisterAll()
         {
-            lg.File("Clearing all tracked grids.", 2);
-            foreach (KeyValuePair<long, Grid> pair in grids)
+            lg.File($"Clearing all {activeGrids.Count} active tracked grids.", 2);
+            foreach (KeyValuePair<long, Grid> pair in activeGrids)
             {
                 IMyCubeGrid cubeGrid = pair.Value?.CubeGrid;
                 if (cubeGrid != null)
                 {
-                    RemoveGrid(pair.Value.CubeGrid);
+                    UnregisterActiveGrid(pair.Value.CubeGrid);
                 }
                 else
                 {
                     lg.File($"Warning: Attempted to remove null grid with EntityId {pair.Key}", 1);
                 }
             }
+            activeGrids.Clear();
+
+            lg.File($"Clearing all {passiveGrids.Count} passive tracked grids.", 2);
+            foreach (KeyValuePair<long, IMyCubeGrid> pair in passiveGrids)
+            {
+                IMyCubeGrid cubeGrid = pair.Value;
+                if (cubeGrid != null)
+                {
+                    UnregisterPassiveGrid(cubeGrid);
+                }
+                else
+                {
+                    lg.File($"Warning: Attempted to remove null passive grid with EntityId {pair.Key}", 1);
+                }
+            }
+            passiveGrids.Clear();
         }
 
-        private void RegisterGrid(IMyCubeGrid cubeGrid)
+        private void RegisterActiveGrid(IMyCubeGrid cubeGrid)
         {
             lg.File($"Registering grid {cubeGrid.DisplayName} for tracking.", 2);
             Grid grid = new Grid(cubeGrid, config, lg);
             grid.ScanGrid();
             grid.Update();
 
-            grids.Add(cubeGrid.EntityId, grid);
+            activeGrids.Add(cubeGrid.EntityId, grid);
 
-            cubeGrid.OnClose += GridClose;
+            cubeGrid.OnClose += ActiveGridClose;
             cubeGrid.OnBlockAdded += grid.AddBlock;
             cubeGrid.OnBlockRemoved += grid.RemoveBlock;
         }
 
-        private void RemoveGrid(IMyCubeGrid cubeGrid)
+        private void UnregisterActiveGrid(IMyCubeGrid cubeGrid)
         {
             lg.File($"Removing grid {cubeGrid.DisplayName} from tracking.", 2);
-            if (grids.ContainsKey(cubeGrid.EntityId))
+            if (activeGrids.ContainsKey(cubeGrid.EntityId))
             {
-                Grid grid = grids[cubeGrid.EntityId];
-                cubeGrid.OnClose -= GridClose;
+                Grid grid = activeGrids[cubeGrid.EntityId];
+                cubeGrid.OnClose -= ActiveGridClose;
                 cubeGrid.OnBlockAdded -= grid.AddBlock;
                 cubeGrid.OnBlockRemoved -= grid.RemoveBlock;
-                grids.Remove(cubeGrid.EntityId);
             }
             else
             {
                 lg.File($"Warning: Attempted to remove grid that is not tracked: {cubeGrid.DisplayName}", 1);
+            }
+        }
+
+        private void RegisterPassiveGrid(IMyCubeGrid cubeGrid)
+        {
+            lg.File($"Registering passive grid {cubeGrid.DisplayName} for tracking.", 3);
+            passiveGrids.Add(cubeGrid.EntityId, cubeGrid);
+            cubeGrid.OnBlockAdded += CheckActivate;
+        }
+
+        private void UnregisterPassiveGrid(IMyCubeGrid cubeGrid)
+        {
+            lg.File($"Removing passive grid {cubeGrid.DisplayName} from tracking.", 3);
+            if (passiveGrids.ContainsKey(cubeGrid.EntityId))
+            {
+                cubeGrid.OnBlockAdded -= CheckActivate;
+            }
+            else
+            {
+                lg.File($"Warning: Attempted to remove passive grid that is not tracked: {cubeGrid.DisplayName}", 1);
+            }
+        }
+
+        private void CheckActivate(IMySlimBlock block)
+        {
+            IMyCubeGrid cubeGrid = block.CubeGrid;
+            if (IsPlayerOwnedGrid(cubeGrid))
+            {
+                lg.File($"Passive grid {cubeGrid.DisplayName} is now player owned, activating tracking.", 2);
+                UnregisterPassiveGrid(cubeGrid);
+                RegisterActiveGrid(cubeGrid);
             }
         }
 
@@ -105,13 +158,18 @@ namespace AHOD
             lg.File("Init done.", 2);
         }
 
-        private bool IsPlayerOwnedGrid(IMyEntity ent)
+        private bool IsGrid(IMyEntity ent)
         {
             IMyCubeGrid grid = ent as IMyCubeGrid;
-            if (grid == null)
+            if (grid != null)
             {
-                return false;
+                return true;
             }
+            return false;
+        }
+
+        private bool IsPlayerOwnedGrid(IMyCubeGrid grid)
+        {
             if (grid.SmallOwners.Contains(MyAPIGateway.Session.Player.IdentityId))
             {
                 return true;
@@ -120,6 +178,7 @@ namespace AHOD
             {
                 return true;
             }
+
             return false;
         }
     }
