@@ -14,7 +14,9 @@ namespace AHOD
         const string FileName = "Config.ini";
         const string IniSection = "Config";
         public int DebugLevel = 1;
+        //TODO: Make dictionary?
         public List<BedRequirement> BedRequirements = new List<BedRequirement>();
+        //TODO: Make this a HashSet for faster lookup?
         public List<string> BedSubtypeIds = new List<string>();
         Logger lg;
 
