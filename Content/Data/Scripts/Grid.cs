@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI;
 using VRage.Game.ModAPI;
-using VRage.ModAPI;
 
 namespace AHOD
 {
@@ -34,11 +33,28 @@ namespace AHOD
         /// </summary>
         public long GridId => guid.GetHashCode();
 
+        public bool IsActive {
+                get
+                {
+                    return _isActive;
+                }
+                private set
+                {
+                    if (!_isActive && value)
+                    {
+                        lg.File("Grid is now active.", 2);
+                    }
+                    else if (_isActive && !value)
+                    {
+                        lg.File("Grid is now inactive.", 2);
+                    }
+                }
+            }
+        private bool _isActive = false;
         List<IMyCubeGrid> cubeGrids = new List<IMyCubeGrid>();
         AHODConfig config;
         Logger lg;
         Guid guid = Guid.Empty;
-        bool isPlayerOwned = false;
         /// <summary>
         /// Initializes a new instance of the Grid class.
         /// </summary>
@@ -69,9 +85,15 @@ namespace AHOD
                 SubscribeCubeGrid(cubeGrid);
                 ChangeBedCount(CountBeds(cubeGrid));
                 ChangeRequiredBedCount(CountRequiredBeds(cubeGrid));
+                if (!IsActive)
+                {
+                    if (IsPlayerOwned(cubeGrid))
+                    {
+                        IsActive = true;
+                    }
+                }
             }
             Update();
-            IsPlayerOwned();
         }
 
         protected override void OnGridAdded(IMyCubeGrid cubeGrid, IMyGridGroupData prevGroup)
@@ -82,7 +104,13 @@ namespace AHOD
             ChangeRequiredBedCount(CountRequiredBeds(cubeGrid));
             Update();
             cubeGrids.Add(cubeGrid);
-            IsPlayerOwned();
+            if (!IsActive)
+            {
+                if (IsPlayerOwned(cubeGrid))
+                {
+                    IsActive = true;
+                }
+            }
         }
 
         protected override void OnGridRemoved(IMyCubeGrid cubeGrid, IMyGridGroupData nextGroup)
@@ -106,7 +134,7 @@ namespace AHOD
             BedCount = 0;
             RequiredBedCount = 0;
             Efficiency = 1f;
-            isPlayerOwned = false;
+            IsActive = false;
         }
         /// <summary>
         /// Gets a unique identifier for this grid instance. If not already assigned, generates a new one.
@@ -131,6 +159,11 @@ namespace AHOD
             {
                 lg.File($"Efficiency updated: {Efficiency:P0}", 3);
                 lg.OnScreen($"Efficiency updated: {Efficiency:P0}", durationMs: 2000, level: 3, color: "White", force: true);
+                if (!IsActive)
+                {
+                    lg.File("Grid is not active, skipping efficiency application.", 3);
+                    return;
+                }
                 ApplyNewEfficiency();
             }
         }
@@ -160,9 +193,12 @@ namespace AHOD
         /// <param name="block">Block to add</param>
         public void AddBlock(IMySlimBlock block)
         {
-            if (!IsPlayerOwned())
+            if (!IsActive)
             {
-                return;
+                if (IsPlayerBuilt(block))
+                {
+                    IsActive = true;
+                }
             }
             lg.File($"Adding block {block?.FatBlock?.BlockDefinition.SubtypeId}", 3);
             if (IsBed(block))
@@ -309,40 +345,24 @@ namespace AHOD
             return blocks.Count;
         }
         /// <summary>
-        /// Check ownership of each cube grid to determine if at least one is player owned. Once true, remains true.
+        /// Determines if the given block is player built.
         /// </summary>
-        /// <details>
-        /// Once one cube grid is found to be player owned, the result stays true for the lifetime of the grid instance.
-        /// Changing ownership back to non-player owned is an edge case that is not handled. However, reloading the session
-        /// will recreate the grid instance and recalculate ownership, possibly to a non-player owned state.
-        /// </details>
-        /// <returns>True if at least one cube grid is/has been player owned.</returns>
-        private bool IsPlayerOwned()
+        /// <param name="newBlock">Block to check</param>
+        /// <returns>True, if the block is player built.</returns>
+        /// TODO: Consider faction ownership for multiplayer scenarios.
+        private bool IsPlayerBuilt(IMySlimBlock newBlock)
         {
-            if (isPlayerOwned)
-            {
-                return true;
-            }
-            foreach (IMyCubeGrid grid in cubeGrids)
-            {
-                if (IsPlayerOwnedCubeGrid(grid))
-                {
-                    lg.File($"CubeGrid {grid.DisplayName} (ID: {grid.EntityId}) is player owned.", 2);
-                    isPlayerOwned = true;
-                    break;
-                }
-            }
-            return isPlayerOwned;
+            return newBlock.BuiltBy == MyAPIGateway.Session.Player.IdentityId;
         }
         /// <summary>
-        /// Determines if the given cube grid is player owned.
+        /// Determines if the given cubegrid is player owned.
         /// </summary>
-        /// <param name="grid">Cube grid to check</param>
+        /// <param name="cubeGrid">Cubegrid to check</param>
         /// <returns>True, if the cube grid is player owned.</returns>
         /// TODO: Consider faction ownership for multiplayer scenarios.
-        private bool IsPlayerOwnedCubeGrid(IMyCubeGrid grid)
+        private bool IsPlayerOwned(IMyCubeGrid cubeGrid)
         {
-            if (grid.BigOwners.Contains(MyAPIGateway.Session.Player.IdentityId))
+            if (cubeGrid.BigOwners.Contains(MyAPIGateway.Session.Player.IdentityId))
             {
                 return true;
             }
