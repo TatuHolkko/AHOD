@@ -76,7 +76,7 @@ namespace AHOD
         void ApplyConfig(MyIni iniParser)
         {
             string bedReqStr = iniParser.Get(IniSection, nameof(BedRequirements)).ToString("");
-            lg.File("Parsing BedRequirements: " + bedReqStr, 3);
+            lg.File("Parsing BedRequirements: " + bedReqStr, 4);
             BedRequirements = ParseBedRequirements(bedReqStr);
             BedSubtypeIds = ParseSubtypes(iniParser.Get(IniSection, nameof(BedSubtypeIds)).ToString(""));
             DebugLevel = iniParser.Get(IniSection, nameof(DebugLevel)).ToInt32(1);
