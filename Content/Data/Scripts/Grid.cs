@@ -43,10 +43,12 @@ namespace AHOD
                     if (!_isActive && value)
                     {
                         lg.File("Grid is now active.", 2);
+                        _isActive = true;
                     }
                     else if (_isActive && !value)
                     {
                         lg.File("Grid is now inactive.", 2);
+                        _isActive = false;
                     }
                 }
             }
