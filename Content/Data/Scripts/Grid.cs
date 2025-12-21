@@ -45,9 +45,8 @@ namespace AHOD
         /// <param name="gridGroup">Modding api grid group object</param>
         /// <param name="config">Mod config class</param>
         /// <param name="logger">Logger to copy logging options from. The class creates its own logger object.</param>
-        /// <param name="scanGrids">If true, scans all cube grids in the group to initialize bed counts and efficiency.</param>
         /// </summary>
-        public Grid(IMyGridGroupData gridGroup, AHODConfig config, Logger logger, bool scanGrids = false)
+        public Grid(IMyGridGroupData gridGroup, AHODConfig config, Logger logger)
         : base(gridGroup)
         {
             this.config = config;
@@ -61,27 +60,22 @@ namespace AHOD
             };
             lg.Context = $"{GridId:x4}";
             lg.File($"Creating new Grid instance for GridGroup.", 2);
-            if (scanGrids)
+
+            GridGroup.GetGrids(cubeGrids);
+            lg.File($"Scanning all {cubeGrids.Count} cube grids in group to initialize bed counts and efficiency.", 2);
+            foreach (IMyCubeGrid cubeGrid in cubeGrids)
             {
-                /// A specical case to manually initialize bed counts and efficiency
-                /// if the grid group was created before this event handler
-                /// was attached.
-                List<IMyCubeGrid> cubeGridsTemp = new List<IMyCubeGrid>();
-                GridGroup.GetGrids(cubeGridsTemp);
-                lg.File($"Scanning all {cubeGridsTemp.Count} cube grids in group to initialize bed counts and efficiency.", 2);
-                foreach (IMyCubeGrid cubeGrid in cubeGridsTemp)
-                {
-                    OnGridAdded(cubeGrid, null);
-                }
+                lg.File($"Initial CubeGrid added: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) to Grid instance.", 3);
+                SubscribeCubeGrid(cubeGrid);
+                ChangeBedCount(CountBeds(cubeGrid));
+                ChangeRequiredBedCount(CountRequiredBeds(cubeGrid));
             }
+            Update();
+            IsPlayerOwned();
         }
 
         protected override void OnGridAdded(IMyCubeGrid cubeGrid, IMyGridGroupData prevGroup)
         {
-            if (IsClosed)
-            {
-                lg.File("Grid instance is closed; reusing instance.", 2);
-            }
             lg.File($"New CubeGrid added: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) to Grid instance.", 2);
             SubscribeCubeGrid(cubeGrid);
             ChangeBedCount(CountBeds(cubeGrid));

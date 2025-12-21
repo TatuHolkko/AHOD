@@ -16,42 +16,55 @@ namespace AHOD
         public override void LoadData()
         {
             InitConfig();
-            MyAPIGateway.Entities.OnEntityAdd += OnEntityAdd;
             lg.File("AHODSession loaded.", 2);
         }
-        public void OnEntityAdd(IMyEntity entity)
-        {
-            MyAPIGateway.Entities.OnEntityAdd -= OnEntityAdd;
-            /// This is a hack to initialize group logic on the first
-            /// entity added, because the grid group system is not
-            /// available at LoadData time.
-            BindGroupLogic();
 
-            MyCubeGrid grid = entity as MyCubeGrid;
-            if (grid != null)
-            {
-                /// The group logic binding did not trigger for this cubegrid,
-                /// so we add it manually.
-                lg.File($"GroupLogic binding triggered by cubegrid: {entity.DisplayName}, adding eventhandler manually.", 2);
-                /// The ctor of MyGridGroupsDefaultEventHandler will add references to this object
-                /// in the MyGridGroupData object, so we do not save a reference here.
-                new Grid(grid.GetGridGroup(linkTypeEnum: GridLinkTypeEnum.Mechanical), config, lg, true);
-            }
+        public override void BeforeStart()
+        {
+            BindGroupLogic();
+            InitializeExistingGroups();
         }
 
         protected override void UnloadData()
         {
             lg.File("AHODSession unloaded.", 2);
         }
-
+        /// <summary>
+        /// Create a Grid event handler for the given grid group.
+        /// </summary>
+        /// <details>
+        /// The return value does not need to be saved by the caller,
+        /// because the constructor of MyGridGroupsDefaultEventHandler
+        /// (which Grid extends) saves references to the object by
+        /// subscribing to events in the <ref>groupData</ref> parameter.
+        /// A bit weird pattern, but that's how the API works.
+        /// </details>
+        /// <param name="groupData">Modding api grid group object</param>
+        /// <returns></returns>
         Grid CreateEventHandler(IMyGridGroupData groupData)
         {
             return new Grid(groupData, config, lg);
         }
+        /// <summary>
+        /// Bind the grid group logic to create event handlers for new mechanical groups.
+        /// </summary>
         private void BindGroupLogic()
         {
             MyGridGroupsHelper helper = new MyGridGroupsHelper();
             helper.AddGridGroupLogic(GridLinkTypeEnum.Mechanical, CreateEventHandler);
+        }
+        /// <summary>
+        /// Initialize event handlers manually for existing mechanical grid groups.
+        /// </summary>
+        private void InitializeExistingGroups()
+        {
+            MyGridGroupsHelper helper = new MyGridGroupsHelper();
+            List<IMyGridGroupData> groups = new List<IMyGridGroupData>();
+            helper.GetGridGroups(GridLinkTypeEnum.Mechanical, groups);
+            foreach (var group in groups)
+            {
+                CreateEventHandler(group);
+            }
         }
         private void InitConfig()
         {
