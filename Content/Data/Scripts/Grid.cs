@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI;
+using Sandbox.Game.Entities;
+using VRage.Game.Entity;
 using VRage.Game.ModAPI;
+using Sandbox.Game.Entities.Character;
 
 namespace AHOD
 {
@@ -354,19 +357,33 @@ namespace AHOD
         /// TODO: Consider faction ownership for multiplayer scenarios.
         private bool IsPlayerBuilt(IMySlimBlock newBlock)
         {
-            return newBlock.BuiltBy == MyAPIGateway.Session.Player.IdentityId;
+            return IsPlayerEntityId(newBlock.BuiltBy);
         }
         /// <summary>
         /// Determines if the given cubegrid is player owned.
         /// </summary>
         /// <param name="cubeGrid">Cubegrid to check</param>
         /// <returns>True, if the cube grid is player owned.</returns>
-        /// TODO: Consider faction ownership for multiplayer scenarios.
         private bool IsPlayerOwned(IMyCubeGrid cubeGrid)
         {
-            if (cubeGrid.BigOwners.Contains(MyAPIGateway.Session.Player.IdentityId))
+            if (cubeGrid.BigOwners == null || cubeGrid.BigOwners.Count == 0)
             {
-                return true;
+                return false;
+            }
+            return IsPlayerEntityId(cubeGrid.BigOwners[0]);
+        }
+        /// <summary>
+        /// Determines if the given entity ID belongs to a player character.
+        /// </summary>
+        /// <param name="entityId">Entity ID to check</param>
+        /// <returns>True, if the entity ID belongs to a player character.</returns>
+        private bool IsPlayerEntityId(long entityId)
+        {
+            MyEntity entity = null;
+            if (MyEntities.TryGetEntityById(entityId, out entity, allowClosed: true))
+            {
+                IMyCharacter character = entity as IMyCharacter;
+                return character != null && character.IsPlayer;
             }
             return false;
         }

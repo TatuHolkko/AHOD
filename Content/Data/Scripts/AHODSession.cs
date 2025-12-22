@@ -2,8 +2,6 @@ using Sandbox.Game.Entities;
 using VRage.Game.Components;
 using System.Collections.Generic;
 using VRage.Game.ModAPI;
-using Sandbox.ModAPI;
-using VRage.ModAPI;
 
 namespace AHOD
 {
