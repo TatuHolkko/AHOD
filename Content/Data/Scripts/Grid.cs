@@ -15,18 +15,13 @@ namespace AHOD
     /// <details>
     /// When this file uses
     /// the word "grid" by itself, it is referring to this custom
-    /// Grid class, which can contain many in-game cube grids as
+    /// Grid class, which can contain many in-game CubeGrids as
     /// part of a in-game grid group.
     /// </details>
     public class Grid : MyGridGroupsDefaultEventHandler
     {
-        /// <summary>
-        /// The current number of beds in the grid.
-        /// </summary>
-        public int BedCount { get; private set; } = 0;
-        /// <summary>
-        /// The current number of beds required by the grid.
-        public int RequiredBedCount { get; private set; } = 0;
+        Dictionary<string, int> BlockCounts = new Dictionary<string, int>();
+        Dictionary<string, int> RequiredCounts = new Dictionary<string, int>();
         /// <summary>
         /// The current efficiency of the grid, from 0.0 to 1.0.
         /// </summary>
@@ -36,25 +31,26 @@ namespace AHOD
         /// </summary>
         public long GridId => guid.GetHashCode();
 
-        public bool IsActive {
-                get
+        public bool IsActive
+        {
+            get
+            {
+                return _isActive;
+            }
+            private set
+            {
+                if (!_isActive && value)
                 {
-                    return _isActive;
+                    lg.File("Grid is now active.", 2);
+                    _isActive = true;
                 }
-                private set
+                else if (_isActive && !value)
                 {
-                    if (!_isActive && value)
-                    {
-                        lg.File("Grid is now active.", 2);
-                        _isActive = true;
-                    }
-                    else if (_isActive && !value)
-                    {
-                        lg.File("Grid is now inactive.", 2);
-                        _isActive = false;
-                    }
+                    lg.File("Grid is now inactive.", 2);
+                    _isActive = false;
                 }
             }
+        }
         private bool _isActive = false;
         List<IMyCubeGrid> cubeGrids = new List<IMyCubeGrid>();
         AHODConfig config;
@@ -83,13 +79,12 @@ namespace AHOD
             lg.File($"Creating new Grid instance for GridGroup.", 2);
 
             GridGroup.GetGrids(cubeGrids);
-            lg.File($"Scanning all {cubeGrids.Count} cube grids in group to initialize bed counts and efficiency.", 2);
+            lg.File($"Scanning all {cubeGrids.Count} CubeGrids in group to initialize bed counts and efficiency.", 2);
             foreach (IMyCubeGrid cubeGrid in cubeGrids)
             {
                 lg.File($"Initial CubeGrid added: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) to Grid instance.", 3);
                 SubscribeCubeGrid(cubeGrid);
-                ChangeBedCount(CountBeds(cubeGrid));
-                ChangeRequiredBedCount(CountRequiredBeds(cubeGrid));
+                RegisterGrid(cubeGrid);
                 if (!IsActive)
                 {
                     if (IsPlayerOwned(cubeGrid))
@@ -105,8 +100,7 @@ namespace AHOD
         {
             lg.File($"New CubeGrid added: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) to Grid instance.", 2);
             SubscribeCubeGrid(cubeGrid);
-            ChangeBedCount(CountBeds(cubeGrid));
-            ChangeRequiredBedCount(CountRequiredBeds(cubeGrid));
+            RegisterGrid(cubeGrid);
             Update();
             cubeGrids.Add(cubeGrid);
             if (!IsActive)
@@ -122,8 +116,7 @@ namespace AHOD
         {
             lg.File($"Removing CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) from Grid instance.", 2);
             UnsubscribeCubeGrid(cubeGrid);
-            ChangeBedCount(-CountBeds(cubeGrid));
-            ChangeRequiredBedCount(-CountRequiredBeds(cubeGrid));
+            UnregisterGrid(cubeGrid);
             Update();
             cubeGrids.Remove(cubeGrid);
         }
@@ -136,8 +129,8 @@ namespace AHOD
                 UnsubscribeCubeGrid(cubeGrid);
             }
             cubeGrids.Clear();
-            BedCount = 0;
-            RequiredBedCount = 0;
+            BlockCounts.Clear();
+            RequiredCounts.Clear();
             Efficiency = 1f;
             IsActive = false;
         }
@@ -173,9 +166,9 @@ namespace AHOD
             }
         }
         /// <summary>
-        /// Subscribes to cube grid events.
+        /// Subscribes to CubeGrid events.
         /// </summary>
-        /// <param name="cubeGrid">Cube grid to subscribe to</param>
+        /// <param name="cubeGrid">CubeGrid to subscribe to</param>
         private void SubscribeCubeGrid(IMyCubeGrid cubeGrid)
         {
             lg.File($"Subscribing to CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) events.", 3);
@@ -183,9 +176,9 @@ namespace AHOD
             cubeGrid.OnBlockRemoved += RemoveBlock;
         }
         /// <summary>
-        /// Unsubscribes from cube grid events.
+        /// Unsubscribes from CubeGrid events.
         /// </summary>
-        /// <param name="cubeGrid">Cube grid to unsubscribe from</param>
+        /// <param name="cubeGrid">CubeGrid to unsubscribe from</param>
         private void UnsubscribeCubeGrid(IMyCubeGrid cubeGrid)
         {
             lg.File($"Unsubscribing from CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) events.", 3);
@@ -206,23 +199,11 @@ namespace AHOD
                 }
             }
             lg.File($"Adding block {block?.FatBlock?.BlockDefinition.SubtypeId}", 3);
-            if (IsBed(block))
+            if (config.IsTrackedBlock(block))
             {
-                ChangeBedCount(1);
+                RegisterBlock(block.FatBlock.BlockDefinition.SubtypeId);
+                Update();
             }
-            else if (RequiresBeds(block))
-            {
-                foreach (BedRequirement br in config.BedRequirements)
-                {
-                    IMyCubeBlock cb = block.FatBlock;
-                    if (cb.BlockDefinition.SubtypeId == br.SubtypeId)
-                    {
-                        ChangeRequiredBedCount(br.Beds);
-                        break;
-                    }
-                }
-            }
-            Update();
         }
         /// <summary>
         /// Removes a block from the grid's bed calculations and updates efficiency.
@@ -231,56 +212,64 @@ namespace AHOD
         public void RemoveBlock(IMySlimBlock block)
         {
             lg.File($"Removing block {block?.FatBlock?.BlockDefinition.SubtypeId}", 3);
-            if (IsBed(block))
+            if (config.IsTrackedBlock(block))
             {
-                ChangeBedCount(-1);
-            }
-            else if (RequiresBeds(block))
-            {
-                foreach (BedRequirement br in config.BedRequirements)
-                {
-                    IMyCubeBlock cb = block.FatBlock;
-                    if (cb.BlockDefinition.SubtypeId == br.SubtypeId)
-                    {
-                        ChangeRequiredBedCount(-br.Beds);
-                        break;
-                    }
-                }
-            }
-            Update();
-        }
-        /// <summary>
-        /// Changes the bed count by the specified amount. Does not
-        /// automatically update efficiency; call Update() after
-        /// making changes.
-        /// </summary>
-        /// <param name="amount">Amount to change, can be negative</param>
-        public void ChangeBedCount(int amount)
-        {
-            lg.File($"Changing BedCount by {amount}, new value {BedCount + amount}.", 3);
-            BedCount += amount;
-            if (BedCount < 0)
-            {
-                lg.File($"Warning: BedCount went below zero. Resetting to zero.", 1);
-                lg.OnScreen($"Warning: BedCount went below zero. Resetting to zero.", durationMs: 2000, level: 2, color: "Red");
-                BedCount = 0;
+                UnregisterBlock(block.FatBlock.BlockDefinition.SubtypeId);
+                Update();
             }
         }
         /// <summary>
-        /// Changes the required bed count by the specified amount.
+        /// Adds the specified amount to the block count for the given group.
         /// Does not automatically update efficiency; call Update()
         /// after making changes.
         /// </summary>
-        /// <param name="amount">Amount to change, can be negative</param>
-        public void ChangeRequiredBedCount(int amount)
+        /// <param name="groupName">Group name</param>
+        /// <param name="amount">Amount to add (can be negative)</param>
+        public void ChangeGroupCount(string groupName, int amount)
         {
-            lg.File($"Changing RequiredBedCount by {amount}, new value {RequiredBedCount + amount}.", 3);
-            RequiredBedCount += amount;
-            if (RequiredBedCount < 0)
+            if (!BlockCounts.ContainsKey(groupName))
             {
-                lg.File($"Warning: RequiredBedCount went below zero. Resetting to zero.", 1);
-                lg.OnScreen($"Warning: RequiredBedCount went below zero. Resetting to zero.", durationMs: 2000, level: 2, color: "Red");
-                RequiredBedCount = 0;
+                BlockCounts[groupName] = 0;
+            }
+            lg.File($"Changing BlockCount for group {groupName} by {amount}, new value {BlockCounts[groupName] + amount}.", 3);
+            BlockCounts[groupName] += amount;
+            if (BlockCounts[groupName] < 0)
+            {
+                lg.File($"Warning: BlockCount for group {groupName} went below zero. Resetting to zero.", 1);
+                lg.OnScreen($"Warning: BlockCount for group {groupName} went below zero. Resetting to zero.", durationMs: 2000, level: 2, color: "Red");
+                BlockCounts[groupName] = 0;
+            }
+            if (BlockCounts[groupName] == 0)
+            {
+                lg.File($"BlockCount for group {groupName} is now zero. Removing tracking element.", 4);
+                BlockCounts.Remove(groupName);
+            }
+        }
+        /// <summary>
+        /// Adds the specified amount to the required count for the given group.
+        /// Does not automatically update efficiency; call Update()
+        /// after making changes.
+        /// </summary>
+        /// <param name="groupName">Group name</param>
+        /// <param name="amount">Amount to add (can be negative)</param>
+        public void ChangeRequirement(string groupName, int amount)
+        {
+            if (!RequiredCounts.ContainsKey(groupName))
+            {
+                RequiredCounts[groupName] = 0;
+            }
+            lg.File($"Changing RequiredCount for group {groupName} by {amount}, new value {RequiredCounts[groupName] + amount}.", 3);
+            RequiredCounts[groupName] += amount;
+            if (RequiredCounts[groupName] < 0)
+            {
+                lg.File($"Warning: RequiredCount for group {groupName} went below zero. Resetting to zero.", 1);
+                lg.OnScreen($"Warning: RequiredCount for group {groupName} went below zero. Resetting to zero.", durationMs: 2000, level: 2, color: "Red");
+                RequiredCounts[groupName] = 0;
+            }
+            if (RequiredCounts[groupName] == 0)
+            {
+                lg.File($"RequiredCount for group {groupName} is now zero. Removing tracking element.", 4);
+                RequiredCounts.Remove(groupName);
             }
         }
         /// <summary>
@@ -296,58 +285,91 @@ namespace AHOD
         /// </summary>
         private void RecalculateEfficency()
         {
-            if (RequiredBedCount == 0)
+            float minEff = 1f;
+            foreach (var kvp in RequiredCounts)
             {
-                Efficiency = 1f;
-            }
-            else
-            {
-                Efficiency = (float)BedCount / RequiredBedCount;
-                if (Efficiency > 1f)
+                string groupName = kvp.Key;
+                int required = kvp.Value;
+                int available = 0;
+                if (BlockCounts.ContainsKey(groupName))
                 {
-                    Efficiency = 1f;
+                    available = BlockCounts[groupName];
                 }
-            }
-            Efficiency = RoundEfficiency(Efficiency);
-        }
-        /// <summary>
-        /// Counts the total number of beds required by all blocks in
-        /// the given cube grid.
-        /// Costly operation; should be used sparingly.
-        /// </summary>
-        /// <param name="cubeGrid">The cube grid to check</param>
-        /// <returns>Number of required beds in the given grid</returns>
-        private int CountRequiredBeds(IMyCubeGrid cubeGrid)
-        {
-            int sum = 0;
-            List<IMySlimBlock> blocks = new List<IMySlimBlock>();
-            cubeGrid.GetBlocks(blocks, b => RequiresBeds(b));
-            foreach (IMySlimBlock block in blocks)
-            {
-                IMyCubeBlock cb = block.FatBlock;
-                foreach (BedRequirement br in config.BedRequirements)
+                if (required > 0)
                 {
-                    if (cb.BlockDefinition.SubtypeId == br.SubtypeId)
+                    float groupEff = (float)available / (float)required;
+                    lg.File($"Group {groupName}: {available}/{required}, efficiency {groupEff:P0}.", 4);
+                    if (groupEff < minEff)
                     {
-                        lg.File($"Block {cb.DisplayName} requires {br.Beds} beds.", 4);
-                        sum += br.Beds;
-                        break;
+                        minEff = groupEff;
                     }
                 }
             }
-            return sum;
+            Efficiency = RoundEfficiency(minEff);
         }
         /// <summary>
-        /// Counts the total number of beds in the given cube grid.
-        /// Costly operation; should be used sparingly.
+        /// Registers all relevant blocks from the given CubeGrid.
         /// </summary>
-        /// <param name="cubeGrid">>The cube grid to check</param>
-        /// <returns>Number of beds in the given grid</returns>
-        private int CountBeds(IMyCubeGrid cubeGrid)
+        /// <param name="cubeGrid">CubeGrid to register</param>
+        private void RegisterGrid(IMyCubeGrid cubeGrid)
         {
-            List<IMySlimBlock> blocks = new List<IMySlimBlock>();
-            cubeGrid.GetBlocks(blocks, b => IsBed(b));
-            return blocks.Count;
+            var blocks = new List<IMySlimBlock>();
+            cubeGrid.GetBlocks(blocks, config.IsTrackedBlock);
+            foreach (var block in blocks)
+            {
+                RegisterBlock(block.FatBlock.BlockDefinition.SubtypeId);
+            }
+        }
+        /// <summary>
+        /// Unregisters all tracked blocks from the given CubeGrid.
+        /// </summary>
+        /// <param name="cubeGrid">CubeGrid to unregister</param>
+        private void UnregisterGrid(IMyCubeGrid cubeGrid)
+        {
+            var blocks = new List<IMySlimBlock>();
+            cubeGrid.GetBlocks(blocks, config.IsTrackedBlock);
+            foreach (var block in blocks)
+            {
+                UnregisterBlock(block.FatBlock.BlockDefinition.SubtypeId);
+            }
+        }
+        /// <summary>
+        /// Registers a block into the grid's tracking system, if the subtype is tracked.
+        /// </summary>
+        /// <param name="subTypeId">Block Subtype ID</param>
+        private void RegisterBlock(string subTypeId)
+        {
+            if (config.GroupOfBlockSubtype.ContainsKey(subTypeId))
+            {
+                string groupName = config.GroupOfBlockSubtype[subTypeId];
+                ChangeGroupCount(groupName, 1);
+                if (config.EfficiencyRequirements.ContainsKey(groupName))
+                {
+                    foreach (var req in config.EfficiencyRequirements[groupName])
+                    {
+                        ChangeRequirement(req.Key, req.Value);
+                    }
+                }
+            }
+        }
+        /// <summary>
+        /// Unregisters a block from the grid's tracking system, if the subtype is tracked.
+        /// </summary>
+        /// <param name="subTypeId">Block Subtype ID</param>
+        public void UnregisterBlock(string subTypeId)
+        {
+            if (config.GroupOfBlockSubtype.ContainsKey(subTypeId))
+            {
+                string groupName = config.GroupOfBlockSubtype[subTypeId];
+                ChangeGroupCount(groupName, -1);
+                if (config.EfficiencyRequirements.ContainsKey(groupName))
+                {
+                    foreach (var req in config.EfficiencyRequirements[groupName])
+                    {
+                        ChangeRequirement(req.Key, -req.Value);
+                    }
+                }
+            }
         }
         /// <summary>
         /// Determines if the given block is player built.
@@ -363,7 +385,7 @@ namespace AHOD
         /// Determines if the given cubegrid is player owned.
         /// </summary>
         /// <param name="cubeGrid">Cubegrid to check</param>
-        /// <returns>True, if the cube grid is player owned.</returns>
+        /// <returns>True, if the CubeGrid is player owned.</returns>
         private bool IsPlayerOwned(IMyCubeGrid cubeGrid)
         {
             if (cubeGrid.BigOwners == null || cubeGrid.BigOwners.Count == 0)
@@ -384,48 +406,6 @@ namespace AHOD
             {
                 IMyCharacter character = entity as IMyCharacter;
                 return character != null && character.IsPlayer;
-            }
-            return false;
-        }
-        /// <summary>
-        /// Determines if the given block requires beds.
-        /// </summary>
-        /// <param name="block">Block to check</param>
-        /// <returns>True if the block requires beds, false otherwise</returns>
-        private bool RequiresBeds(IMySlimBlock block)
-        {
-            IMyCubeBlock cb = block.FatBlock;
-            if (cb == null)
-            {
-                return false;
-            }
-            foreach (BedRequirement br in config.BedRequirements)
-            {
-                if (cb.BlockDefinition.SubtypeId == br.SubtypeId)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-        /// <summary>
-        /// Determines if the given block is a bed.
-        /// </summary>
-        /// <param name="block">Block to check</param>
-        /// <returns>True if the block is a bed, false otherwise</returns>
-        private bool IsBed(IMySlimBlock block)
-        {
-            IMyCubeBlock cb = block.FatBlock;
-            if (cb == null)
-            {
-                return false;
-            }
-            foreach (string subtypeId in config.BedSubtypeIds)
-            {
-                if (cb.BlockDefinition.SubtypeId == subtypeId)
-                {
-                    return true;
-                }
             }
             return false;
         }

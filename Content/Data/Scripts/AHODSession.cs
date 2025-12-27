@@ -67,7 +67,7 @@ namespace AHOD
         private void InitConfig()
         {
             //TODO: What debug level to use before config is loaded? Logging might be needed to debug config loading.
-            lg = new Logger() { DebugLevel = 3 };
+            lg = new Logger() { DebugLevel = 4 };
             lg.File("Init start.", 2);
             config = new AHODConfig(lg);
             //TODO: Remove export before load in release build

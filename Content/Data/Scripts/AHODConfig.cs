@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Sandbox.ModAPI;
+using VRage.Game.ModAPI;
 using VRage.Game.ModAPI.Ingame.Utilities;
 
 namespace AHOD
@@ -12,12 +13,12 @@ namespace AHOD
     {
         const string VariableId = nameof(AHODSession);
         const string FileName = "Config.ini";
-        const string IniSection = "Config";
+        const string IniSection = "AHOD";
         public int DebugLevel = 1;
-        //TODO: Make dictionary?
-        public List<BedRequirement> BedRequirements = new List<BedRequirement>();
-        //TODO: Make this a HashSet for faster lookup?
-        public List<string> BedSubtypeIds = new List<string>();
+        public bool Valid = true;
+        public Dictionary<string, Dictionary<string, int>> EfficiencyRequirements = new Dictionary<string, Dictionary<string, int>>();
+        public Dictionary<string, HashSet<string>> BlockGroups = new Dictionary<string, HashSet<string>>();
+        public Dictionary<string, string> GroupOfBlockSubtype = new Dictionary<string, string>();
         Logger lg;
 
         public AHODConfig(Logger logger = null)
@@ -30,27 +31,12 @@ namespace AHOD
             {
                 lg = new Logger();
             }
-            // Default values
-            BedRequirements = new List<BedRequirement>
+            SetDefaultBlockConfigs();
+            Valid = ValidateConfig();
+            if (!Valid)
             {
-                new BedRequirement() { SubtypeId = "LargeRefinery", Beds = 5 },
-                new BedRequirement() { SubtypeId = "LargeRefineryIndustrial", Beds = 5 },
-                new BedRequirement() { SubtypeId = "LargePrototechRefinery", Beds = 10 },
-                new BedRequirement() { SubtypeId = "Blast Furnace", Beds = 3 },
-                new BedRequirement() { SubtypeId = "LargeAssembler", Beds = 5 },
-                new BedRequirement() { SubtypeId = "BasicAssembler", Beds = 2 },
-                new BedRequirement() { SubtypeId = "LargeAssemblerIndustrial", Beds = 5 },
-                new BedRequirement() { SubtypeId = "LargePrototechAssembler", Beds = 10 },
-            };
-
-            BedSubtypeIds = new List<string>
-            {
-                "LargeBlockBed",
-                "LargeBlockHalfBed",
-                "LargeBlockHalfBedOffset",
-                "LargeBlockInsetBed",
-                "LargeBlockBedFree",
-            };
+                lg.File("WARNING: Config is invalid!", 0);
+            }
         }
 
         public void Export()
@@ -71,21 +57,150 @@ namespace AHOD
             {
                 LoadOnClient();
             }
+            Valid = ValidateConfig();
+        }
+
+        public Dictionary<string, int> GetEfficiencyRequirements(string groupName)
+        {
+            if (EfficiencyRequirements.ContainsKey(groupName))
+            {
+                return EfficiencyRequirements[groupName];
+            }
+            return new Dictionary<string, int>();
+        }
+
+        public string GetBlockGroup(string subtypeId)
+        {
+            if (GroupOfBlockSubtype.ContainsKey(subtypeId))
+            {
+                return GroupOfBlockSubtype[subtypeId];
+            }
+            return null;
+        }
+
+        public bool IsTrackedBlock(IMySlimBlock slimBlock)
+        {
+            if (slimBlock == null || slimBlock.FatBlock == null)
+            {
+                return false;
+            }
+            return GroupOfBlockSubtype.ContainsKey(slimBlock.FatBlock.BlockDefinition.SubtypeId);
+        }
+
+        void SetDefaultBlockConfigs()
+        {
+            SetDefaultBlockGroups();
+            SetDefaultEfficiencyRequirements();
+            CreateBlockGroupMappings();
+        }
+
+        void SetDefaultBlockGroups()
+        {
+            BlockGroups = new Dictionary<string, HashSet<string>>()
+                {
+                    {
+                        "Beds", new HashSet<string>()
+                        {
+                            "LargeBlockBed",
+                            "LargeBlockHalfBed",
+                            "LargeBlockHalfBedOffset",
+                            "LargeBlockInsetBed",
+                            "LargeBlockBedFree",
+                        }
+                    },
+                    {
+                        "Refineries", new HashSet<string>()
+                        {
+                            "LargeRefinery",
+                            "LargeRefineryIndustrial",
+                        }
+                    },
+                };
+        }
+
+        void SetDefaultEfficiencyRequirements()
+        {
+            EfficiencyRequirements = new Dictionary<string, Dictionary<string, int>>()
+                {
+                    {
+                        "Refineries", new Dictionary<string, int>()
+                        {
+                            { "Beds", 5 },
+                        }
+                    },
+                };
+        }
+
+        void CreateBlockGroupMappings()
+        {
+            foreach (var group in BlockGroups)
+            {
+                foreach (var subtype in group.Value)
+                {
+                    // Duplicates are not checked here, ValidateConfig does that
+                    GroupOfBlockSubtype[subtype] = group.Key;
+                }
+            }
+        }
+
+        bool ValidateConfig()
+        {
+            bool valid = true;
+            HashSet<string> allSubtypes = new HashSet<string>();
+            foreach (var group in BlockGroups)
+            {
+                foreach (var subtype in group.Value)
+                {
+                    if (allSubtypes.Contains(subtype))
+                    {
+                        lg.File($"WARNING: Block subtype '{subtype}' is defined in multiple groups, which is not supported.", 0);
+                        valid = false;
+                    }
+                    allSubtypes.Add(subtype);
+                }
+            }
+            foreach (var reqDef in EfficiencyRequirements)
+            {
+                if (!BlockGroups.ContainsKey(reqDef.Key))
+                {
+                    lg.File($"WARNING: Efficiency requirement created for an undefined group '{reqDef.Key}'.", 0);
+                    valid = false;
+                    continue;
+                }
+                foreach (var req in reqDef.Value)
+                {
+                    if (!BlockGroups.ContainsKey(req.Key))
+                    {
+                        lg.File($"WARNING: Efficiency requirement for group '{reqDef.Key}' references an undefined group '{req.Key}'.", 0);
+                        valid = false;
+                    }
+                    if (req.Value < 0)
+                    {
+                        lg.File($"WARNING: Efficiency requirement for group '{reqDef.Key}' defines a negative required count '{req.Value}' for group '{req.Key}'.", 0);
+                        valid = false;
+                    }
+                }
+            }
+            return valid;
         }
 
         void ApplyConfig(MyIni iniParser)
         {
-            string bedReqStr = iniParser.Get(IniSection, nameof(BedRequirements)).ToString("");
-            lg.File("Parsing BedRequirements: " + bedReqStr, 4);
-            BedRequirements = ParseBedRequirements(bedReqStr);
-            BedSubtypeIds = ParseSubtypes(iniParser.Get(IniSection, nameof(BedSubtypeIds)).ToString(""));
+            string groupStr = iniParser.Get(IniSection, nameof(BlockGroups)).ToString("");
+            lg.File("Parsing Eff.Requirements: " + groupStr, 4);
+            BlockGroups = ParseBlockGroups(groupStr);
+
+            string reqStr = iniParser.Get(IniSection, nameof(EfficiencyRequirements)).ToString("");
+            lg.File("Parsing Block Groups: " + reqStr, 4);
+            EfficiencyRequirements = ParseEfficiencyRequirements(reqStr);
+
             DebugLevel = iniParser.Get(IniSection, nameof(DebugLevel)).ToInt32(1);
         }
 
         void PopulateIniParser(MyIni iniParser)
         {
-            iniParser.Set(IniSection, nameof(BedRequirements), EncodeBedRequirements(BedRequirements));
-            iniParser.Set(IniSection, nameof(BedSubtypeIds), String.Join(";", BedSubtypeIds));
+            iniParser.Set(IniSection, nameof(BlockGroups), EncodeBlockGroups(BlockGroups));
+            iniParser.Set(IniSection, nameof(EfficiencyRequirements), EncodeEfficiencyRequirements(EfficiencyRequirements));
             iniParser.Set(IniSection, nameof(DebugLevel), DebugLevel);
         }
 
@@ -164,76 +279,94 @@ namespace AHOD
             ApplyConfig(iniParser);
             lg.File("Config loaded from sandbox.sbc.");
         }
-
-        string EncodeBedRequirements(List<BedRequirement> reqs)
+        string EncodeBlockGroups(Dictionary<string, HashSet<string>> blockGroups)
         {
-            string result = "";
-            bool first = true;
-            foreach (BedRequirement req in reqs)
+            List<string> groupEntries = new List<string>();
+            foreach (var group in blockGroups)
             {
-                if (first)
-                {
-                    first = false;
-                }
-                else
-                {
-                    result += ";";
-                }
-                result += $"{req.SubtypeId}:{req.Beds}";
+                string entry = group.Key + ":" + string.Join(",", group.Value);
+                groupEntries.Add(entry);
             }
-            return result;
+            return string.Join(";", groupEntries);
         }
-
-        List<string> ParseSubtypes(string datastring)
+        string EncodeEfficiencyRequirements(Dictionary<string, Dictionary<string, int>> efficiencyRequirements)
         {
-            List<string> types = new List<string>();
-            if (datastring == "")
+            List<string> requirementEntries = new List<string>();
+            foreach (var reqDef in efficiencyRequirements)
             {
-                return types;
-            }
-            foreach (string type in datastring.Split(';'))
-            {
-                types.Add(type);
-            }
-            lg.File($"Parsed {types.Count} bed subtypes.", 3);
-            return types;
-        }
-
-        List<BedRequirement> ParseBedRequirements(string datastring)
-        {
-            List<BedRequirement> reqs = new List<BedRequirement>();
-            if (datastring == "")
-            {
-                lg.File("No bed requirements specified in config.", 3);
-                return reqs;
-            }
-            foreach (string kvpair in datastring.Split(';'))
-            {
-                lg.File($"Parsing bed requirement: {kvpair}", 4);
-                if (!kvpair.Contains(":"))
+                List<string> reqParts = new List<string>();
+                foreach (var req in reqDef.Value)
                 {
-                    lg.File($"ERROR: Invalid bed requirement list item '{kvpair}', the correct format is: 'Subtype:NubmerOfBeds'.", 0);
+                    string reqPart = req.Key + "=" + req.Value.ToString();
+                    reqParts.Add(reqPart);
+                }
+                string entry = reqDef.Key + ":" + string.Join(",", reqParts);
+                requirementEntries.Add(entry);
+            }
+            return string.Join(";", requirementEntries);
+        }
+        public Dictionary<string, HashSet<string>> ParseBlockGroups(string input)
+        {
+            var blockGroups = new Dictionary<string, HashSet<string>>();
+            if (input == null || input.Trim() == "")
+            {
+                return blockGroups;
+            }
+            var groupEntries = input.Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var groupEntry in groupEntries)
+            {
+                var parts = groupEntry.Split(new char[] { ':' }, 2);
+                if (parts.Length != 2)
+                {
+                    Valid = false;
+                    lg.File($"WARNING: Invalid block group entry '{groupEntry}'. Expected format 'GroupName1:SubtypeId1,SubtypeId2,...;GroupName2:...'", 0);
                     continue;
                 }
-                string subtype = kvpair.Split(':')[0];
-                string numBeds = kvpair.Split(':')[1];
-                if (numBeds.All(Char.IsDigit))
-                {
-                    reqs.Add(new BedRequirement() { SubtypeId = subtype, Beds = int.Parse(numBeds) });
-                }
-                else
-                {
-                    lg.File($"ERROR: Invalid number of beds '{numBeds}', must be an integer.", 0);
-                }
+                var groupName = parts[0].Trim();
+                var subtypeIds = parts[1].Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                        .Select(s => s.Trim())
+                                        .ToHashSet();
+                blockGroups[groupName] = subtypeIds;
             }
-            lg.File($"Parsed {reqs.Count} bed requirements.", 3);
-            return reqs;
+            return blockGroups;
         }
-    }
 
-    public class BedRequirement
-    {
-        public string SubtypeId;
-        public int Beds;
+        Dictionary<string, Dictionary<string, int>> ParseEfficiencyRequirements(string input)
+        {
+            var efficiencyRequirements = new Dictionary<string, Dictionary<string, int>>();
+            if (input == null || input.Trim() == "")
+            {
+                return efficiencyRequirements;
+            }
+            var requirementEntries = input.Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var requirementEntry in requirementEntries)
+            {
+                var parts = requirementEntry.Split(new char[] { ':' }, 2);
+                if (parts.Length != 2)
+                {
+                    Valid = false;
+                    lg.File($"WARNING: Invalid efficiency requirement entry '{requirementEntry}'. Expected format 'GroupName1:ReqGroup1=Count1,ReqGroup2=Count2;GroupName2:...'", 0);
+                    continue;
+                }
+                var groupName = parts[0].Trim();
+                var reqParts = parts[1].Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                var reqDict = new Dictionary<string, int>();
+                foreach (var reqPart in reqParts)
+                {
+                    var reqPair = reqPart.Split(new char[] { '=' });
+                    int count = 0;
+                    if (reqPair.Length != 2 || !int.TryParse(reqPair[1].Trim(), out count))
+                    {
+                        Valid = false;
+                        lg.File($"WARNING: Invalid requirement '{reqPart}' in entry '{requirementEntry}'. Expected format 'ReqGroup=Count'", 0);
+                        continue;
+                    }
+                    var reqGroup = reqPair[0].Trim();
+                    reqDict[reqGroup] = count;
+                }
+                efficiencyRequirements[groupName] = reqDict;
+            }
+            return efficiencyRequirements;
+        }
     }
 }
