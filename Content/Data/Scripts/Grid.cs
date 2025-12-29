@@ -130,16 +130,22 @@ namespace AHOD
 
         protected override void OnGridRemoved(IMyCubeGrid cubeGrid, IMyGridGroupData nextGroup)
         {
-            if (IsReleased)
+            if(cubeGrids.Remove(cubeGrid))
             {
-                lg.File($"Tried to remove CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) from a released Grid instance. Ignoring.", 3);
-                return;
+                lg.File($"Removing CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) from Grid instance.", 2);
+                UnsubscribeCubeGrid(cubeGrid);
+                UnregisterGrid(cubeGrid);
+                Update();
             }
-            lg.File($"Removing CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) from Grid instance.", 2);
-            UnsubscribeCubeGrid(cubeGrid);
-            UnregisterGrid(cubeGrid);
-            Update();
-            cubeGrids.Remove(cubeGrid);
+            else if (cubeGrid.MarkedForClose)
+            {
+                lg.File($"Skipping removal of already removed CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}).", 3);
+            }
+            else
+            {
+                lg.File($"Warning: Tried to remove CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) from Grid instance, but it was not found.", 2);
+            }
+
         }
         /// <summary>
         /// Gets a unique identifier for this grid instance. If not already assigned, generates a new one.
@@ -196,22 +202,22 @@ namespace AHOD
         }
         /// <summary>
         /// Callback for when a CubeGrid is marked for close.
-        /// If all CubeGrids in the Grid are marked for close, releases the Grid.
         /// </summary>
         /// <param name="entity">Entity being closed</param>
         private void CubeGridMarkedForClose(IMyEntity entity)
         {
-            lg.File($"CubeGrid {entity.DisplayName} (ID: {entity.EntityId}) marked for close, checking if all CubeGrids are marked for close.", 3);
-            foreach (IMyCubeGrid cubeGrid in cubeGrids)
+            IMyCubeGrid cubeGrid = entity as IMyCubeGrid;
+            if(cubeGrids.Remove(cubeGrid))
             {
-                if (!cubeGrid.MarkedForClose)
-                {
-                    lg.File("Not all CubeGrids are marked for close, skipping Grid release.", 2);
-                    return;
-                }
+                lg.File($"CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) marked for close, removing from Grid instance.", 2);
+                UnsubscribeCubeGrid(cubeGrid);
+                UnregisterGrid(cubeGrid);
+                Update();
             }
-            lg.File($"Automatic release of Grid instance invoked by all CubeGrids being marked for close.", 2);
-            Release();
+            else
+            {
+                lg.File($"Warning: CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) marked for close, but was not found in Grid instance.", 2);
+            }
         }
         private void Release()
         {
