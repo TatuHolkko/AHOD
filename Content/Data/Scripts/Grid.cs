@@ -2,9 +2,7 @@ using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI;
 using Sandbox.Game.Entities;
-using VRage.Game.Entity;
 using VRage.Game.ModAPI;
-using Sandbox.Game.Entities.Character;
 
 namespace AHOD
 {
@@ -22,6 +20,7 @@ namespace AHOD
     {
         Dictionary<string, int> BlockCounts = new Dictionary<string, int>();
         Dictionary<string, int> RequiredCounts = new Dictionary<string, int>();
+        HashSet<MyCubeBlock> EfficiencyTargets = new HashSet<MyCubeBlock>();
         /// <summary>
         /// The current efficiency of the grid, from 0.0 to 1.0.
         /// </summary>
@@ -52,6 +51,7 @@ namespace AHOD
             }
         }
         private bool _isActive = false;
+        private float currentAppliedEfficiency = 1f;
         List<IMyCubeGrid> cubeGrids = new List<IMyCubeGrid>();
         AHODConfig config;
         Logger lg;
@@ -75,7 +75,8 @@ namespace AHOD
                 FileLogging = logger.FileLogging,
                 OnScreenLogging = logger.OnScreenLogging
             };
-            lg.Context = $"{GridId:x4}";
+            string hex = String.Format("{0:x10}", GridId);
+            lg.Context = hex.Substring(hex.Length - 5, 5);
             lg.File($"Creating new Grid instance for GridGroup.", 2);
 
             GridGroup.GetGrids(cubeGrids);
@@ -83,6 +84,8 @@ namespace AHOD
             foreach (IMyCubeGrid cubeGrid in cubeGrids)
             {
                 lg.File($"Initial CubeGrid added: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) to Grid instance.", 3);
+                bool temp = lg.Enabled;
+                lg.Enabled = false;
                 SubscribeCubeGrid(cubeGrid);
                 RegisterGrid(cubeGrid);
                 if (!IsActive)
@@ -92,6 +95,7 @@ namespace AHOD
                         IsActive = true;
                     }
                 }
+                lg.Enabled = temp;
             }
             Update();
         }
@@ -101,7 +105,6 @@ namespace AHOD
             lg.File($"New CubeGrid added: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) to Grid instance.", 2);
             SubscribeCubeGrid(cubeGrid);
             RegisterGrid(cubeGrid);
-            Update();
             cubeGrids.Add(cubeGrid);
             if (!IsActive)
             {
@@ -110,6 +113,7 @@ namespace AHOD
                     IsActive = true;
                 }
             }
+            Update();
         }
 
         protected override void OnGridRemoved(IMyCubeGrid cubeGrid, IMyGridGroupData nextGroup)
@@ -127,11 +131,18 @@ namespace AHOD
             foreach (IMyCubeGrid cubeGrid in cubeGrids)
             {
                 UnsubscribeCubeGrid(cubeGrid);
+                UnregisterGrid(cubeGrid);
             }
             cubeGrids.Clear();
+            if (BlockCounts.Count > 0 || RequiredCounts.Count > 0 || EfficiencyTargets.Count > 0)
+            {
+                lg.File($"Warning: Grid being released still has tracked data: BlockCounts:{BlockCounts.Count}, RequiredCounts:{RequiredCounts.Count}, EfficiencyTargets:{EfficiencyTargets.Count}. Clearing data.", 1);
+            }
             BlockCounts.Clear();
             RequiredCounts.Clear();
+            EfficiencyTargets.Clear();
             Efficiency = 1f;
+            currentAppliedEfficiency = 1f;
             IsActive = false;
         }
         /// <summary>
@@ -201,7 +212,7 @@ namespace AHOD
             lg.File($"Adding block {block?.FatBlock?.BlockDefinition.SubtypeId}", 3);
             if (config.IsTrackedBlock(block))
             {
-                RegisterBlock(block.FatBlock.BlockDefinition.SubtypeId);
+                RegisterBlock(block.FatBlock);
                 Update();
             }
         }
@@ -214,7 +225,7 @@ namespace AHOD
             lg.File($"Removing block {block?.FatBlock?.BlockDefinition.SubtypeId}", 3);
             if (config.IsTrackedBlock(block))
             {
-                UnregisterBlock(block.FatBlock.BlockDefinition.SubtypeId);
+                UnregisterBlock(block.FatBlock);
                 Update();
             }
         }
@@ -277,7 +288,28 @@ namespace AHOD
         /// </summary>
         private void ApplyNewEfficiency()
         {
-            //TODO: Apply efficiency to grid systems
+            foreach (var block in EfficiencyTargets)
+            {
+                RemoveProductivityEfficiency(block, currentAppliedEfficiency);
+                ApplyProductivityEfficiency(block, Efficiency);
+            }
+            currentAppliedEfficiency = Efficiency;
+        }
+        private void ApplyProductivityEfficiency(MyCubeBlock block, float efficiency)
+        {
+            float additiveEfficiency = efficiency - 1f;
+            block.UpgradeValues["Productivity"] += additiveEfficiency;
+            block.CommitUpgradeValues();
+            IMyTerminalBlock terminalBlock = block as IMyTerminalBlock;
+            terminalBlock?.SetDetailedInfoDirty();
+        }
+        private void RemoveProductivityEfficiency(MyCubeBlock block, float efficiency)
+        {
+            float additiveEfficiency = efficiency - 1f;
+            block.UpgradeValues["Productivity"] -= additiveEfficiency;
+            block.CommitUpgradeValues();
+            IMyTerminalBlock terminalBlock = block as IMyTerminalBlock;
+            terminalBlock?.SetDetailedInfoDirty();
         }
         /// <summary>
         /// Recalculates the grid's efficiency based on current bed
@@ -305,6 +337,11 @@ namespace AHOD
                     }
                 }
             }
+            if (minEff < 0.1f)
+            {
+                lg.File($"Minimum efficiency {minEff:P0} is below 10%, setting to 10%.", 3);
+                minEff = 0.1f;
+            }
             Efficiency = RoundEfficiency(minEff);
         }
         /// <summary>
@@ -317,7 +354,7 @@ namespace AHOD
             cubeGrid.GetBlocks(blocks, config.IsTrackedBlock);
             foreach (var block in blocks)
             {
-                RegisterBlock(block.FatBlock.BlockDefinition.SubtypeId);
+                RegisterBlock(block.FatBlock);
             }
         }
         /// <summary>
@@ -330,21 +367,30 @@ namespace AHOD
             cubeGrid.GetBlocks(blocks, config.IsTrackedBlock);
             foreach (var block in blocks)
             {
-                UnregisterBlock(block.FatBlock.BlockDefinition.SubtypeId);
+                UnregisterBlock(block.FatBlock);
             }
         }
         /// <summary>
         /// Registers a block into the grid's tracking system, if the subtype is tracked.
         /// </summary>
-        /// <param name="subTypeId">Block Subtype ID</param>
-        private void RegisterBlock(string subTypeId)
+        /// <param name="block">Block to register</param>
+        private void RegisterBlock(IMyCubeBlock block)
         {
+            string subTypeId = block.BlockDefinition.SubtypeId;
             if (config.GroupOfBlockSubtype.ContainsKey(subTypeId))
             {
                 string groupName = config.GroupOfBlockSubtype[subTypeId];
                 ChangeGroupCount(groupName, 1);
                 if (config.EfficiencyRequirements.ContainsKey(groupName))
                 {
+                    if(EfficiencyTargets.Add(block as MyCubeBlock))
+                    {
+                        ApplyProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
+                    }
+                    else
+                    {
+                        lg.File($"Warning: Tried to register block {subTypeId} to efficiency targets, but it was already present.", 2);
+                    }
                     foreach (var req in config.EfficiencyRequirements[groupName])
                     {
                         ChangeRequirement(req.Key, req.Value);
@@ -355,15 +401,24 @@ namespace AHOD
         /// <summary>
         /// Unregisters a block from the grid's tracking system, if the subtype is tracked.
         /// </summary>
-        /// <param name="subTypeId">Block Subtype ID</param>
-        public void UnregisterBlock(string subTypeId)
+        /// <param name="block">Block to unregister</param>
+        public void UnregisterBlock(IMyCubeBlock block)
         {
+            string subTypeId = block.BlockDefinition.SubtypeId;
             if (config.GroupOfBlockSubtype.ContainsKey(subTypeId))
             {
                 string groupName = config.GroupOfBlockSubtype[subTypeId];
                 ChangeGroupCount(groupName, -1);
                 if (config.EfficiencyRequirements.ContainsKey(groupName))
                 {
+                    if(EfficiencyTargets.Remove(block as MyCubeBlock))
+                    {
+                        RemoveProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
+                    }
+                    else
+                    {
+                        lg.File($"Warning: Tried to unregister block {subTypeId} from efficiency targets, but it was not found.", 2);
+                    }
                     foreach (var req in config.EfficiencyRequirements[groupName])
                     {
                         ChangeRequirement(req.Key, -req.Value);
