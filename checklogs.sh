@@ -6,17 +6,23 @@ if [ -f "$f" ]; then
     # Insert an empty line whenever the context code changes. Lines without
     # a context are treated as a single shared context so they remain grouped.
     # Also strip the YYYY-MM-DD part of the timestamp and the Thread token.
-    tail -n500 "$f" | grep --color=never "AHOD" | \
-    awk 'BEGIN{prev=""}
-    {
-        if (match($0, /\[([0-9A-Fa-f]{5})\]/, m)) key=m[1]; else key="__NOCTX__";
-        if (NR>1 && key!=prev) print "";
-        line=$0;
-        sub(/^[0-9]{4}-[0-9]{2}-[0-9]{2} /, "", line); # remove date
-        sub(/ - Thread:[ \t]*[0-9]+ ->[ \t]*/, " ", line); # remove thread marker
-        gsub(/^[ \t]+|[ \t]+$/, "", line); # trim
-        print line;
-        prev=key;
+    tail -n1000 "$f" | grep --color=never "AHOD" | \
+    awk '
+    { lines[NR] = $0; if ($0 ~ /Script loaded/) last = NR }
+    END {
+        start = (last ? last : 1)
+        prev = ""
+        for (i = start; i <= NR; i++) {
+            l = lines[i]
+            if (match(l, /\[([0-9A-Fa-f]{5})\]/, m)) key = m[1]; else key = "__NOCTX__"
+            if (i > start && key != prev) print ""
+            tmp = l
+            sub(/^[0-9]{4}-[0-9]{2}-[0-9]{2} /, "", tmp) # remove date
+            sub(/ - Thread:[ \t]*[0-9]+ ->[ \t]*/, " ", tmp) # remove thread marker
+            gsub(/^[ \t]+|[ \t]+$/, "", tmp) # trim
+            print tmp
+            prev = key
+        }
     }' > "$outp"
     cat "$outp"
 else
