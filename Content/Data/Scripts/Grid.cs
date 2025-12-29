@@ -376,10 +376,9 @@ namespace AHOD
         /// </summary>
         /// <param name="newBlock">Block to check</param>
         /// <returns>True, if the block is player built.</returns>
-        /// TODO: Consider faction ownership for multiplayer scenarios.
         private bool IsPlayerBuilt(IMySlimBlock newBlock)
         {
-            return IsPlayerEntityId(newBlock.BuiltBy);
+            return IsPlayerIdentityId(newBlock.BuiltBy);
         }
         /// <summary>
         /// Determines if the given cubegrid is player owned.
@@ -392,22 +391,30 @@ namespace AHOD
             {
                 return false;
             }
-            return IsPlayerEntityId(cubeGrid.BigOwners[0]);
+            return IsPlayerIdentityId(cubeGrid.BigOwners[0]);
         }
         /// <summary>
-        /// Determines if the given entity ID belongs to a player character.
+        /// Determines if the given identity ID belongs to a player character.
         /// </summary>
-        /// <param name="entityId">Entity ID to check</param>
-        /// <returns>True, if the entity ID belongs to a player character.</returns>
-        private bool IsPlayerEntityId(long entityId)
+        /// <param name="identityId">Identity ID to check</param>
+        /// <returns>True, if the identity ID belongs to a player character.</returns>
+        private bool IsPlayerIdentityId(long identityId)
         {
-            MyEntity entity = null;
-            if (MyEntities.TryGetEntityById(entityId, out entity, allowClosed: true))
+            IMyFaction faction = MyAPIGateway.Session.Factions.TryGetPlayerFaction(identityId);
+            if (faction == null)
             {
-                IMyCharacter character = entity as IMyCharacter;
-                return character != null && character.IsPlayer;
+                return true;
             }
-            return false;
+            if (!faction.AcceptHumans || faction.IsEveryoneNpc())
+            {
+                return false;
+            }
+            if (!string.IsNullOrEmpty(faction.PrivateInfo))
+            {
+                return true;
+            }
+            lg.File($"WARNING: Could not determine if identity ID {identityId} is player controlled. Assuming it is.", 2);
+            return true;
         }
         /// <summary>
         /// Rounds the efficiency to the nearest defined increment.
