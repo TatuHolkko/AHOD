@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Sandbox.ModAPI;
 using Sandbox.Game.Entities;
 using VRage.Game.ModAPI;
+using VRage.ModAPI;
 
 namespace AHOD
 {
@@ -29,7 +30,18 @@ namespace AHOD
         /// The unique identifier for this grid.
         /// </summary>
         public long GridId => guid.GetHashCode();
-
+        /// <summary>
+        /// Callback invoked when the grid is released.
+        /// </summary>
+        public Action<Grid> OnReleasedCallback = null;
+        /// <summary>
+        /// Indicates whether this grid object has been released.
+        /// </summary>
+        public  bool IsReleased { get; private set; } = false;
+        /// <summary>
+        /// Indicates whether this grid is active (has player-built blocks).
+        /// Non-active grids do not apply efficiency changes.
+        /// </summary>
         public bool IsActive
         {
             get
@@ -118,32 +130,16 @@ namespace AHOD
 
         protected override void OnGridRemoved(IMyCubeGrid cubeGrid, IMyGridGroupData nextGroup)
         {
+            if (IsReleased)
+            {
+                lg.File($"Tried to remove CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) from a released Grid instance. Ignoring.", 3);
+                return;
+            }
             lg.File($"Removing CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) from Grid instance.", 2);
             UnsubscribeCubeGrid(cubeGrid);
             UnregisterGrid(cubeGrid);
             Update();
             cubeGrids.Remove(cubeGrid);
-        }
-
-        protected override void OnReleased()
-        {
-            lg.File("GridGroup released, unsubscribing from all CubeGrids.", 2);
-            foreach (IMyCubeGrid cubeGrid in cubeGrids)
-            {
-                UnsubscribeCubeGrid(cubeGrid);
-                UnregisterGrid(cubeGrid);
-            }
-            cubeGrids.Clear();
-            if (BlockCounts.Count > 0 || RequiredCounts.Count > 0 || EfficiencyTargets.Count > 0)
-            {
-                lg.File($"Warning: Grid being released still has tracked data: BlockCounts:{BlockCounts.Count}, RequiredCounts:{RequiredCounts.Count}, EfficiencyTargets:{EfficiencyTargets.Count}. Clearing data.", 1);
-            }
-            BlockCounts.Clear();
-            RequiredCounts.Clear();
-            EfficiencyTargets.Clear();
-            Efficiency = 1f;
-            currentAppliedEfficiency = 1f;
-            IsActive = false;
         }
         /// <summary>
         /// Gets a unique identifier for this grid instance. If not already assigned, generates a new one.
@@ -156,6 +152,28 @@ namespace AHOD
                 guid = Guid.NewGuid();
             }
             return guid;
+        }
+        /// <summary>
+        /// Called when the Grid instance is being released by the modding API.
+        /// </summary>
+        protected override void OnReleased()
+        {
+            lg.File("Automatic release of Grid instance invoked by GridGroupData release.", 2);
+            Release();
+        }
+        /// <summary>
+        /// Manually releases the Grid instance, can be called when the modding API does not
+        /// automatically release it.
+        /// </summary>
+        public void ManualRelease()
+        {
+            if (IsClosed)
+            {
+                lg.File("Warning: Tried to manually release Grid instance, but it is already closed.", 1);
+                return;
+            }
+            lg.File("Manual release of Grid instance invoked.", 2);
+            Release();
         }
         /// <summary>
         /// Updates the grid's efficiency based on current bed counts.
@@ -177,6 +195,52 @@ namespace AHOD
             }
         }
         /// <summary>
+        /// Callback for when a CubeGrid is marked for close.
+        /// If all CubeGrids in the Grid are marked for close, releases the Grid.
+        /// </summary>
+        /// <param name="entity">Entity being closed</param>
+        private void CubeGridMarkedForClose(IMyEntity entity)
+        {
+            lg.File($"CubeGrid {entity.DisplayName} (ID: {entity.EntityId}) marked for close, checking if all CubeGrids are marked for close.", 3);
+            foreach (IMyCubeGrid cubeGrid in cubeGrids)
+            {
+                if (!cubeGrid.MarkedForClose)
+                {
+                    lg.File("Not all CubeGrids are marked for close, skipping Grid release.", 2);
+                    return;
+                }
+            }
+            lg.File($"Automatic release of Grid instance invoked by all CubeGrids being marked for close.", 2);
+            Release();
+        }
+        private void Release()
+        {
+            if (IsReleased)
+            {
+                lg.File("This instance is already released, ignoring release request.", 3);
+                return;
+            }
+            lg.File("Releasing Grid instance, unsubscribing from all CubeGrids.", 2);
+            foreach (IMyCubeGrid cubeGrid in cubeGrids)
+            {
+                UnsubscribeCubeGrid(cubeGrid);
+                UnregisterGrid(cubeGrid);
+            }
+            cubeGrids.Clear();
+            if (BlockCounts.Count > 0 || RequiredCounts.Count > 0 || EfficiencyTargets.Count > 0)
+            {
+                lg.File($"Warning: Grid being released still has tracked data: BlockCounts:{BlockCounts.Count}, RequiredCounts:{RequiredCounts.Count}, EfficiencyTargets:{EfficiencyTargets.Count}. Clearing data.", 1);
+            }
+            BlockCounts.Clear();
+            RequiredCounts.Clear();
+            EfficiencyTargets.Clear();
+            Efficiency = 1f;
+            currentAppliedEfficiency = 1f;
+            IsActive = false;
+            IsReleased = true;
+            OnReleasedCallback?.Invoke(this);
+        }
+        /// <summary>
         /// Subscribes to CubeGrid events.
         /// </summary>
         /// <param name="cubeGrid">CubeGrid to subscribe to</param>
@@ -185,6 +249,7 @@ namespace AHOD
             lg.File($"Subscribing to CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) events.", 3);
             cubeGrid.OnBlockAdded += AddBlock;
             cubeGrid.OnBlockRemoved += RemoveBlock;
+            cubeGrid.OnMarkForClose += CubeGridMarkedForClose;
         }
         /// <summary>
         /// Unsubscribes from CubeGrid events.
@@ -195,6 +260,7 @@ namespace AHOD
             lg.File($"Unsubscribing from CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) events.", 3);
             cubeGrid.OnBlockAdded -= AddBlock;
             cubeGrid.OnBlockRemoved -= RemoveBlock;
+            cubeGrid.OnMarkForClose -= CubeGridMarkedForClose;
         }
         /// <summary>
         /// Adds a block to the grid's bed calculations and updates efficiency.
@@ -297,6 +363,7 @@ namespace AHOD
         }
         private void ApplyProductivityEfficiency(MyCubeBlock block, float efficiency)
         {
+            lg.File($"Applying productivity efficiency {efficiency:P0} to block {block.BlockDefinition.DisplayNameText}.", 4);
             float additiveEfficiency = efficiency - 1f;
             block.UpgradeValues["Productivity"] += additiveEfficiency;
             block.CommitUpgradeValues();
@@ -305,6 +372,7 @@ namespace AHOD
         }
         private void RemoveProductivityEfficiency(MyCubeBlock block, float efficiency)
         {
+            lg.File($"Removing previously applied efficiency {efficiency:P0} from block {block.BlockDefinition.DisplayNameText}.", 4);
             float additiveEfficiency = efficiency - 1f;
             block.UpgradeValues["Productivity"] -= additiveEfficiency;
             block.CommitUpgradeValues();
@@ -352,6 +420,7 @@ namespace AHOD
         {
             var blocks = new List<IMySlimBlock>();
             cubeGrid.GetBlocks(blocks, config.IsTrackedBlock);
+            lg.File($"Registering {blocks.Count} tracked blocks from CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}).", 3);
             foreach (var block in blocks)
             {
                 RegisterBlock(block.FatBlock);
@@ -365,6 +434,7 @@ namespace AHOD
         {
             var blocks = new List<IMySlimBlock>();
             cubeGrid.GetBlocks(blocks, config.IsTrackedBlock);
+            lg.File($"Unregistering {blocks.Count} tracked blocks from CubeGrid {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}).", 3);
             foreach (var block in blocks)
             {
                 UnregisterBlock(block.FatBlock);
@@ -377,6 +447,7 @@ namespace AHOD
         private void RegisterBlock(IMyCubeBlock block)
         {
             string subTypeId = block.BlockDefinition.SubtypeId;
+            lg.File($"Registering block {subTypeId}.", 4);
             if (config.GroupOfBlockSubtype.ContainsKey(subTypeId))
             {
                 string groupName = config.GroupOfBlockSubtype[subTypeId];
@@ -405,6 +476,7 @@ namespace AHOD
         public void UnregisterBlock(IMyCubeBlock block)
         {
             string subTypeId = block.BlockDefinition.SubtypeId;
+            lg.File($"Unregistering block {subTypeId}.", 3);
             if (config.GroupOfBlockSubtype.ContainsKey(subTypeId))
             {
                 string groupName = config.GroupOfBlockSubtype[subTypeId];
