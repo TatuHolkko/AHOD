@@ -120,8 +120,6 @@ namespace AHOD
         private void InitConfig()
         {
             config = new AHODConfig(lg);
-            //TODO: Remove export before load in release build
-            config.Export();
             config.Load();
         }
     }
