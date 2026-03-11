@@ -197,10 +197,7 @@ namespace AHOD
 
         void LoadOnClient()
         {
-            if (!LoadFromSBC())
-            {
-                Export();
-            }
+            LoadFromSBC();
         }
 
         bool LoadFromSBC()

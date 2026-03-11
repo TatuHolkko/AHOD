@@ -3,6 +3,7 @@ using VRage.Game.Components;
 using System.Collections.Generic;
 using VRage.Game.ModAPI;
 using System.Linq;
+using Sandbox.ModAPI;
 
 namespace AHOD
 {
@@ -35,8 +36,15 @@ namespace AHOD
 
         public override void BeforeStart()
         {
-            BindGroupLogic();
-            InitializeExistingGroups();
+            if (MyAPIGateway.Session.IsServer)
+            {
+                BindGroupLogic();
+                InitializeExistingGroups();
+            }
+            else
+            {
+                lg.File("Instance is a client, skipping subscriptions.", 2);
+            }
         }
 
         protected override void UnloadData()
