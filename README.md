@@ -1,2 +1,6 @@
 # AHOD
 Space engineers mod
+
+###TODO:
+* Many redundant cheks if blocks are tracked, untracked blocks rarely trigger any code
+* Unify interface vs object types in function parameters

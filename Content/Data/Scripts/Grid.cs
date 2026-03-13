@@ -23,6 +23,10 @@ namespace AHOD
         Dictionary<string, int> RequiredCounts = new Dictionary<string, int>();
         HashSet<MyCubeBlock> EfficiencyTargets = new HashSet<MyCubeBlock>();
         /// <summary>
+        /// Dictionary for keeping references of created event handlers
+        /// </summary>
+        Dictionary<IMyCubeBlock, Action> FunctionalityEventHandlers = new Dictionary<IMyCubeBlock, Action>();
+        /// <summary>
         /// The current efficiency of the grid, from 0.0 to 1.0.
         /// </summary>
         public float Efficiency { get; private set; } = 1f;
@@ -237,9 +241,14 @@ namespace AHOD
             {
                 lg.File($"Warning: Grid being released still has tracked data: BlockCounts:{BlockCounts.Count}, RequiredCounts:{RequiredCounts.Count}, EfficiencyTargets:{EfficiencyTargets.Count}. Clearing data.", 1);
             }
+            if (FunctionalityEventHandlers.Count > 0)
+            {
+                lg.File($"Warning: Grid being released still has {FunctionalityEventHandlers.Count} subscribed event handlers!", 1);
+            }
             BlockCounts.Clear();
             RequiredCounts.Clear();
             EfficiencyTargets.Clear();
+            FunctionalityEventHandlers.Clear();
             Efficiency = 1f;
             currentAppliedEfficiency = 1f;
             IsActive = false;
@@ -267,6 +276,35 @@ namespace AHOD
             cubeGrid.OnBlockAdded -= AddBlock;
             cubeGrid.OnBlockRemoved -= RemoveBlock;
             cubeGrid.OnMarkForClose -= CubeGridMarkedForClose;
+        }
+        /// <summary>
+        /// Subscribe to block functionality change events
+        /// </summary>
+        /// <param name="block">Block to subscribe to</param>
+        private void SubscribeBlock(IMyCubeBlock block)
+        {
+            lg.File($"Subscribing to CubeBlock {block.DisplayName} (ID: {block.EntityId}) events.", 3);
+            Action handler = () => { UpdateFunctionality(block); Update(); };
+            FunctionalityEventHandlers.Add(block, handler);
+            block.SlimBlock.ComponentStack.IsFunctionalChanged += handler;
+        }
+        /// <summary>
+        /// Unsubscribe from block functionality change events
+        /// </summary>
+        /// <param name="block">Block to unsubscribe from</param>
+        private void UnsubscribeBlock(IMyCubeBlock block)
+        {
+            lg.File($"Unsubscribing from CubeBlock {block.DisplayName} (ID: {block.EntityId}) events.", 3);
+            Action handler;
+            if (FunctionalityEventHandlers.TryGetValue(block, out handler))
+            {
+                block.SlimBlock.ComponentStack.IsFunctionalChanged -= handler;
+                FunctionalityEventHandlers.Remove(block);
+            }
+            else
+            {
+                lg.File($"Warning: could not unsubscribe event handlers from {block.BlockDefinition.SubtypeId} '{block.DisplayName}' (ID: {block.EntityId})", 1);
+            }
         }
         /// <summary>
         /// Adds a block to the grid's bed calculations and updates efficiency.
@@ -456,22 +494,14 @@ namespace AHOD
             lg.File($"Registering block {subTypeId}.", 4);
             if (config.GroupOfBlockSubtype.ContainsKey(subTypeId))
             {
-                string groupName = config.GroupOfBlockSubtype[subTypeId];
-                ChangeGroupCount(groupName, 1);
-                if (config.EfficiencyRequirements.ContainsKey(groupName))
+                SubscribeBlock(block);
+                if (block.IsFunctional)
                 {
-                    if(EfficiencyTargets.Add(block as MyCubeBlock))
-                    {
-                        ApplyProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
-                    }
-                    else
-                    {
-                        lg.File($"Warning: Tried to register block {subTypeId} to efficiency targets, but it was already present.", 2);
-                    }
-                    foreach (var req in config.EfficiencyRequirements[groupName])
-                    {
-                        ChangeRequirement(req.Key, req.Value);
-                    }
+                    SetFunctional(block);
+                }
+                else
+                {
+                    lg.File($"Added block {subTypeId} (ID: {block.EntityId}) was not functional, count stays the same.", 4);
                 }
             }
         }
@@ -482,25 +512,85 @@ namespace AHOD
         public void UnregisterBlock(IMyCubeBlock block)
         {
             string subTypeId = block.BlockDefinition.SubtypeId;
-            lg.File($"Unregistering block {subTypeId}.", 3);
+            lg.File($"Unregistering block {subTypeId}.", 4);
             if (config.GroupOfBlockSubtype.ContainsKey(subTypeId))
             {
-                string groupName = config.GroupOfBlockSubtype[subTypeId];
-                ChangeGroupCount(groupName, -1);
-                if (config.EfficiencyRequirements.ContainsKey(groupName))
+                UnsubscribeBlock(block);
+                if (block.IsFunctional)
                 {
-                    if(EfficiencyTargets.Remove(block as MyCubeBlock))
-                    {
-                        RemoveProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
-                    }
-                    else
-                    {
-                        lg.File($"Warning: Tried to unregister block {subTypeId} from efficiency targets, but it was not found.", 2);
-                    }
-                    foreach (var req in config.EfficiencyRequirements[groupName])
-                    {
-                        ChangeRequirement(req.Key, -req.Value);
-                    }
+                    SetNotFunctional(block);
+                }
+                else
+                {
+                    lg.File($"Removed block {subTypeId} (ID: {block.EntityId}) was not functional, count stays the same.", 4);
+                }
+            }
+        }
+        /// <summary>
+        /// Adds or removes the given block from the block counts, depending on
+        /// if the block is currently functional or not, respectively.
+        /// </summary>
+        /// <param name="block">The block that just changed its's functional state</param>
+        private void UpdateFunctionality(IMyCubeBlock block)
+        {
+            if (block.IsFunctional)
+            {
+                SetFunctional(block);
+            }
+            else
+            {
+                SetNotFunctional(block);
+            }
+        }
+        /// <summary>
+        /// Add the given block and it's possible requirements to the block counts
+        /// </summary>
+        /// <param name="block">Block to add</param>
+        private void SetFunctional(IMyCubeBlock block)
+        {
+            string subTypeId = block.BlockDefinition.SubtypeId;
+            string groupName = config.GroupOfBlockSubtype[subTypeId];
+            lg.File($"Detected {subTypeId} (ID: {block.EntityId}) becoming functional.", 4);
+            ChangeGroupCount(groupName, 1);
+            if (config.EfficiencyRequirements.ContainsKey(groupName))
+            {
+                if (EfficiencyTargets.Add(block as MyCubeBlock))
+                {
+                    ApplyProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
+                }
+                else
+                {
+                    lg.File($"Warning: Tried to register block {subTypeId} to efficiency targets, but it was already present.", 2);
+                }
+                foreach (var req in config.EfficiencyRequirements[groupName])
+                {
+                    ChangeRequirement(req.Key, req.Value);
+                }
+            }
+        }
+        /// <summary>
+        /// Remove the given block and it's possible requirements from the block counts
+        /// </summary>
+        /// <param name="block">Block to remove</param>
+        private void SetNotFunctional(IMyCubeBlock block)
+        {
+            string subTypeId = block.BlockDefinition.SubtypeId;
+            string groupName = config.GroupOfBlockSubtype[subTypeId];
+            lg.File($"Detected {subTypeId} (ID: {block.EntityId}) becoming unfunctional.", 4);
+            ChangeGroupCount(groupName, -1);
+            if (config.EfficiencyRequirements.ContainsKey(groupName))
+            {
+                if (EfficiencyTargets.Remove(block as MyCubeBlock))
+                {
+                    RemoveProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
+                }
+                else
+                {
+                    lg.File($"Warning: Tried to unregister block {subTypeId} from efficiency targets, but it was not found.", 2);
+                }
+                foreach (var req in config.EfficiencyRequirements[groupName])
+                {
+                    ChangeRequirement(req.Key, -req.Value);
                 }
             }
         }
