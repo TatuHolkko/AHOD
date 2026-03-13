@@ -15,11 +15,11 @@ namespace AHOD
         const string IniSection = "AHOD";
         public bool Valid = true;
         public int DebugLevel = 1;
-        public Dictionary<string, Dictionary<string, int>> EfficiencyRequirements => efficiencyReqField.Value;
+        public Dictionary<string, Dictionary<string, float>> EfficiencyRequirements => efficiencyReqField.Value;
         public Dictionary<string, HashSet<string>> BlockGroups => blockGroupsField.Value;
         public Dictionary<string, string> GroupOfBlockSubtype = new Dictionary<string, string>();
 
-        ConfigField<Dictionary<string, Dictionary<string, int>>> efficiencyReqField;
+        ConfigField<Dictionary<string, Dictionary<string, float>>> efficiencyReqField;
         ConfigField<Dictionary<string, HashSet<string>>> blockGroupsField;
         ConfigField<int> debugLevelField;
         Logger lg;

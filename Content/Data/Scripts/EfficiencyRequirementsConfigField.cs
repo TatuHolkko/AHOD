@@ -3,16 +3,16 @@ using System.Collections.Generic;
 
 namespace AHOD
 {
-    public class EfficiencyRequirementsConfigField : ConfigField<Dictionary<string, Dictionary<string, int>>>
+    public class EfficiencyRequirementsConfigField : ConfigField<Dictionary<string, Dictionary<string, float>>>
     {
         public EfficiencyRequirementsConfigField(string name, string section, Logger lg)
             : base(name, section, lg)
         {
         }
 
-        protected override Dictionary<string, Dictionary<string, int>> Deserialize(string iniStr)
+        protected override Dictionary<string, Dictionary<string, float>> Deserialize(string iniStr)
         {
-            Dictionary<string, Dictionary<string, int>> efficiencyRequirements = new Dictionary<string, Dictionary<string, int>>();
+            Dictionary<string, Dictionary<string, float>> efficiencyRequirements = new Dictionary<string, Dictionary<string, float>>();
             if (iniStr.Trim() == "")
             {
                 Valid = true;
@@ -42,12 +42,12 @@ namespace AHOD
                     Valid = false;
                     return efficiencyRequirements;
                 }
-                var reqDict = new Dictionary<string, int>();
+                var reqDict = new Dictionary<string, float>();
                 foreach (var reqPart in reqParts)
                 {
                     var reqPair = reqPart.Split(new char[] { '=' });
-                    int count = 0;
-                    if (reqPair.Length != 2 || !int.TryParse(reqPair[1].Trim(), out count))
+                    float count = 0;
+                    if (reqPair.Length != 2 || !float.TryParse(reqPair[1].Trim(), out count))
                     {
                         lg.File($"WARNING: Invalid requirement '{reqPart}' in entry '{requirementEntry}'. Expected format 'ReqGroup=Count'", 0);
                         Valid = false;
@@ -60,7 +60,7 @@ namespace AHOD
                         Valid = false;
                         return efficiencyRequirements;
                     }
-                    reqDict[reqGroup] = count;
+                    reqDict[reqGroup] = (float)(Math.Round(count * 100) / 100f);
                 }
                 efficiencyRequirements[groupName] = reqDict;
             }
@@ -68,7 +68,7 @@ namespace AHOD
             return efficiencyRequirements;
         }
 
-        protected override string Serialize(Dictionary<string, Dictionary<string, int>> efficiencyRequirements)
+        protected override string Serialize(Dictionary<string, Dictionary<string, float>> efficiencyRequirements)
         {
             List<string> requirementEntries = new List<string>();
             foreach (var reqDef in efficiencyRequirements)
@@ -76,7 +76,7 @@ namespace AHOD
                 List<string> reqParts = new List<string>();
                 foreach (var req in reqDef.Value)
                 {
-                    string reqPart = req.Key + "=" + req.Value.ToString();
+                    string reqPart = req.Key + "=" + req.Value.ToString("0.00");
                     reqParts.Add(reqPart);
                 }
                 string entry = reqDef.Key + ":" + string.Join(",", reqParts);
@@ -85,12 +85,12 @@ namespace AHOD
             return string.Join(";", requirementEntries);
         }
 
-        protected override Dictionary<string, Dictionary<string, int>> DefaultValue()
+        protected override Dictionary<string, Dictionary<string, float>> DefaultValue()
         {
-            return new Dictionary<string, Dictionary<string, int>>()
+            return new Dictionary<string, Dictionary<string, float>>()
                 {
                     {
-                        "Refineries", new Dictionary<string, int>()
+                        "Refineries", new Dictionary<string, float>()
                         {
                             { "Beds", 5 },
                         }

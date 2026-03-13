@@ -20,7 +20,7 @@ namespace AHOD
     public class Grid : MyGridGroupsDefaultEventHandler
     {
         Dictionary<string, int> BlockCounts = new Dictionary<string, int>();
-        Dictionary<string, int> RequiredCounts = new Dictionary<string, int>();
+        Dictionary<string, float> RequiredCounts = new Dictionary<string, float>();
         HashSet<MyCubeBlock> EfficiencyTargets = new HashSet<MyCubeBlock>();
         /// <summary>
         /// Dictionary for keeping references of created event handlers
@@ -373,24 +373,29 @@ namespace AHOD
         /// </summary>
         /// <param name="groupName">Group name</param>
         /// <param name="amount">Amount to add (can be negative)</param>
-        public void ChangeRequirement(string groupName, int amount)
+        public void ChangeRequirement(string groupName, float amount)
         {
             if (!RequiredCounts.ContainsKey(groupName))
             {
                 RequiredCounts[groupName] = 0;
             }
-            lg.File($"Changing RequiredCount for group {groupName} by {amount}, new value {RequiredCounts[groupName] + amount}.", 3);
-            RequiredCounts[groupName] += amount;
-            if (RequiredCounts[groupName] < 0)
+            float previousValue = RequiredCounts[groupName];
+            float newValue = RoundRequirement(previousValue + amount);
+            lg.File($"Changing RequiredCount for group {groupName} by {amount}, new value {newValue}.", 3);
+            if (newValue < 0)
             {
                 lg.File($"Warning: RequiredCount for group {groupName} went below zero. Resetting to zero.", 1);
                 lg.OnScreen($"Warning: RequiredCount for group {groupName} went below zero. Resetting to zero.", durationMs: 2000, level: 2, color: "Red");
                 RequiredCounts[groupName] = 0;
             }
-            if (RequiredCounts[groupName] == 0)
+            else if (newValue == 0)
             {
                 lg.File($"RequiredCount for group {groupName} is now zero. Removing tracking element.", 4);
                 RequiredCounts.Remove(groupName);
+            }
+            else
+            {
+                RequiredCounts[groupName] = newValue;
             }
         }
         /// <summary>
@@ -433,7 +438,7 @@ namespace AHOD
             foreach (var kvp in RequiredCounts)
             {
                 string groupName = kvp.Key;
-                int required = kvp.Value;
+                float required = kvp.Value;
                 int available = 0;
                 if (BlockCounts.ContainsKey(groupName))
                 {
@@ -441,7 +446,7 @@ namespace AHOD
                 }
                 if (required > 0)
                 {
-                    float groupEff = (float)available / (float)required;
+                    float groupEff = (float)available / required;
                     lg.File($"Group {groupName}: {available}/{required}, efficiency {groupEff:P0}.", 4);
                     if (groupEff < minEff)
                     {
@@ -652,6 +657,10 @@ namespace AHOD
 
             //nearest 5 percent
             return (float)System.Math.Round(efficiency * 20f) / 20;
+        }
+        private float RoundRequirement(float value)
+        {
+            return (float)System.Math.Round(value * 100f) / 100f;
         }
     }
 }
