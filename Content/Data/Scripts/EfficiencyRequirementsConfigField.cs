@@ -18,7 +18,7 @@ namespace AHOD
                 Valid = true;
                 return efficiencyRequirements;
             }
-            var requirementEntries = iniStr.Split(new char[] { ';' });
+            var requirementEntries = iniStr.Split(new char[] { '|' });
             foreach (var requirementEntry in requirementEntries)
             {
                 var parts = requirementEntry.Split(new char[] { ':' });
@@ -45,7 +45,7 @@ namespace AHOD
                 var reqDict = new Dictionary<string, float>();
                 foreach (var reqPart in reqParts)
                 {
-                    var reqPair = reqPart.Split(new char[] { '=' });
+                    var reqPair = reqPart.Split(new char[] { '-' });
                     float count = 0;
                     if (reqPair.Length != 2 || !float.TryParse(reqPair[1].Trim(), out count))
                     {

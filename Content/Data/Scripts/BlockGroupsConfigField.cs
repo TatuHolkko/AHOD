@@ -20,7 +20,7 @@ namespace AHOD
                 Valid = true;
                 return blockGroups;
             }
-            var groupEntries = iniStr.Split(new char[] { ';' });
+            var groupEntries = iniStr.Split(new char[] { '|' });
             foreach (var groupEntry in groupEntries)
             {
                 var parts = groupEntry.Split(new char[] { ':' });

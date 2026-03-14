@@ -70,6 +70,7 @@ namespace AHOD
             {
                 throw new Exception("AHOD: Loaded config is invalid!");
             }
+            CreateBlockGroupMappings();
         }
 
         public bool IsTrackedBlock(IMySlimBlock slimBlock)
