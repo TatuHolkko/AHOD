@@ -82,6 +82,27 @@ namespace AHOD
             return GroupOfBlockSubtype.ContainsKey(slimBlock.FatBlock.BlockDefinition.SubtypeId);
         }
 
+        public bool IsInfoBlock(IMyCubeBlock block)
+        {
+            if (block == null)
+            {
+                return false;
+            }
+            IMyTerminalBlock tblock = block as IMyTerminalBlock;
+            if (tblock == null)
+            {
+                return false;
+            }
+            if (IsTrackedBlock(tblock.SlimBlock))
+            {
+                if (GroupOfBlockSubtype[tblock.BlockDefinition.SubtypeId] == "Beds")
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         void CreateBlockGroupMappings()
         {
             GroupOfBlockSubtype.Clear();

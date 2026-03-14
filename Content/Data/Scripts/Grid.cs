@@ -4,11 +4,12 @@ using Sandbox.ModAPI;
 using Sandbox.Game.Entities;
 using VRage.Game.ModAPI;
 using VRage.ModAPI;
+using System.Text;
 
 namespace AHOD
 {
     /// <summary>
-    /// Represents a grid group and its associated data for bed
+    /// Represents a grid group and its associated data for block count
     /// management and efficiency calculation.
     /// </summary>
     /// <details>
@@ -22,6 +23,7 @@ namespace AHOD
         Dictionary<string, int> BlockCounts = new Dictionary<string, int>();
         Dictionary<string, float> RequiredCounts = new Dictionary<string, float>();
         HashSet<MyCubeBlock> EfficiencyTargets = new HashSet<MyCubeBlock>();
+        HashSet<IMyTerminalBlock> InfoTargets = new HashSet<IMyTerminalBlock>();
         /// <summary>
         /// Dictionary for keeping references of created event handlers
         /// </summary>
@@ -96,7 +98,7 @@ namespace AHOD
             lg.File($"Creating new Grid instance for GridGroup.", 2);
 
             GridGroup.GetGrids(cubeGrids);
-            lg.File($"Scanning all {cubeGrids.Count} CubeGrids in group to initialize bed counts and efficiency.", 2);
+            lg.File($"Scanning all {cubeGrids.Count} CubeGrids in group to initialize block counts and efficiency.", 2);
             foreach (IMyCubeGrid cubeGrid in cubeGrids)
             {
                 lg.File($"Initial CubeGrid added: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) to Grid instance.", 3);
@@ -114,6 +116,7 @@ namespace AHOD
                 lg.Enabled = temp;
             }
             Update();
+            MarkInfoDirty();
         }
 
         protected override void OnGridAdded(IMyCubeGrid cubeGrid, IMyGridGroupData prevGroup)
@@ -130,6 +133,7 @@ namespace AHOD
                 }
             }
             Update();
+            MarkInfoDirty();
         }
 
         protected override void OnGridRemoved(IMyCubeGrid cubeGrid, IMyGridGroupData nextGroup)
@@ -140,6 +144,7 @@ namespace AHOD
                 UnsubscribeCubeGrid(cubeGrid);
                 UnregisterGrid(cubeGrid);
                 Update();
+                MarkInfoDirty();
             }
             else if (cubeGrid.MarkedForClose)
             {
@@ -186,7 +191,7 @@ namespace AHOD
             Release();
         }
         /// <summary>
-        /// Updates the grid's efficiency based on current bed counts.
+        /// Updates the grid's efficiency based on current block counts.
         /// </summary>
         public void Update()
         {
@@ -245,10 +250,15 @@ namespace AHOD
             {
                 lg.File($"Warning: Grid being released still has {FunctionalityEventHandlers.Count} subscribed event handlers!", 1);
             }
+            if (InfoTargets.Count > 0)
+            {
+                lg.File($"Warning: Grid being released still has {InfoTargets.Count} subscribed info targets!", 1);
+            }
             BlockCounts.Clear();
             RequiredCounts.Clear();
             EfficiencyTargets.Clear();
             FunctionalityEventHandlers.Clear();
+            InfoTargets.Clear();
             Efficiency = 1f;
             currentAppliedEfficiency = 1f;
             IsActive = false;
@@ -278,18 +288,28 @@ namespace AHOD
             cubeGrid.OnMarkForClose -= CubeGridMarkedForClose;
         }
         /// <summary>
-        /// Subscribe to block functionality change events
+        /// Subscribe to block events
         /// </summary>
         /// <param name="block">Block to subscribe to</param>
         private void SubscribeBlock(IMyCubeBlock block)
         {
             lg.File($"Subscribing to CubeBlock {block.DisplayName} (ID: {block.EntityId}) events.", 3);
-            Action handler = () => { UpdateFunctionality(block); Update(); };
+
+            Action handler = () => {
+                UpdateFunctionality(block);
+                Update();
+                MarkInfoDirty();
+                };
             FunctionalityEventHandlers.Add(block, handler);
             block.SlimBlock.ComponentStack.IsFunctionalChanged += handler;
+
+            if (config.IsInfoBlock(block))
+            {
+                SubscribeInfoTarget(block as IMyTerminalBlock);
+            }
         }
         /// <summary>
-        /// Unsubscribe from block functionality change events
+        /// Unsubscribe from block events
         /// </summary>
         /// <param name="block">Block to unsubscribe from</param>
         private void UnsubscribeBlock(IMyCubeBlock block)
@@ -305,9 +325,39 @@ namespace AHOD
             {
                 lg.File($"Warning: could not unsubscribe event handlers from {block.BlockDefinition.SubtypeId} '{block.DisplayName}' (ID: {block.EntityId})", 1);
             }
+
+            if (config.IsInfoBlock(block))
+            {
+                UnsubscribeInfoTarget(block as IMyTerminalBlock);
+            }
         }
         /// <summary>
-        /// Adds a block to the grid's bed calculations and updates efficiency.
+        /// Make the terminal block receive the grid info
+        /// in it's detailed info page
+        /// </summary>
+        /// <param name="block">Terminal block</param>
+        private void SubscribeInfoTarget(IMyTerminalBlock block)
+        {
+            lg.File($"Subscribing info target {block.BlockDefinition.SubtypeId}");
+            InfoTargets.Add(block);
+            block.AppendingCustomInfo += SetInfo;
+        }
+        /// <summary>
+        /// Stop a terminal block from receiving
+        /// grid state info
+        /// </summary>
+        /// <param name="block">Terminal block</param>
+        private void UnsubscribeInfoTarget(IMyTerminalBlock block)
+        {
+            lg.File($"Unsubscribing info target {block.BlockDefinition.SubtypeId}");
+            if (!InfoTargets.Remove(block))
+            {
+                lg.File($"Warning: Tried to unsubscribe from info target '{block.DisplayName}' (ID: {block.EntityId}), but it was not found.", 2);
+            }
+            block.AppendingCustomInfo -= SetInfo;
+        }
+        /// <summary>
+        /// Adds a block to the grid's block count calculations and updates efficiency.
         /// </summary>
         /// <param name="block">Block to add</param>
         public void AddBlock(IMySlimBlock block)
@@ -324,10 +374,11 @@ namespace AHOD
             {
                 RegisterBlock(block.FatBlock);
                 Update();
+                MarkInfoDirty();
             }
         }
         /// <summary>
-        /// Removes a block from the grid's bed calculations and updates efficiency.
+        /// Removes a block from the grid's block count calculations and updates efficiency.
         /// </summary>
         /// <param name="block">Block to remove</param>
         public void RemoveBlock(IMySlimBlock block)
@@ -337,6 +388,7 @@ namespace AHOD
             {
                 UnregisterBlock(block.FatBlock);
                 Update();
+                MarkInfoDirty();
             }
         }
         /// <summary>
@@ -399,6 +451,59 @@ namespace AHOD
             }
         }
         /// <summary>
+        /// Request an info update on each info target block
+        /// </summary>
+        private void MarkInfoDirty()
+        {
+            lg.File("Marked info as dirty.");
+            foreach(IMyTerminalBlock block in InfoTargets)
+            {
+                block.RefreshCustomInfo();
+                block.SetDetailedInfoDirty();
+            }
+        }
+        /// <summary>
+        /// Callback for the terminal block to call when the custom info
+        /// needs updating
+        /// </summary>
+        /// <param name="block">Terminal block</param>
+        /// <param name="sb">String builder</param>
+        private void SetInfo(IMyTerminalBlock block, StringBuilder sb)
+        {
+            sb.Append("AHOD Status:\n");
+            sb.Append($" Efficiency: {Efficiency:P0}");
+            sb.Append("  Counts:\n");
+            foreach(KeyValuePair<string, float> blockReq in RequiredCounts)
+            {
+                string groupName = blockReq.Key;
+                float requiredCount = blockReq.Value;
+                int currentCount= 0;
+                BlockCounts.TryGetValue(groupName, out currentCount);
+                float actualRequiredCount = (float)Math.Floor(requiredCount);
+                sb.Append($"    -{groupName}: {currentCount}/{actualRequiredCount}");
+                if (actualRequiredCount != requiredCount)
+                {
+                    sb.Append($" ({requiredCount})");
+                }
+                sb.Append("\n");
+                foreach(KeyValuePair<string, int> blockCount in BlockCounts)
+                {
+                    string source = blockCount.Key;
+                    Dictionary<string, float> requirements = null;
+                    config.EfficiencyRequirements.TryGetValue(source, out requirements);
+                    float relevantRequirement = 0;
+                    requirements?.TryGetValue(groupName, out relevantRequirement);
+                    if (relevantRequirement > 0)
+                    {
+                        int numSources = 0;
+                        BlockCounts.TryGetValue(source, out numSources);
+                        float total = relevantRequirement * numSources;
+                        sb.Append($"      -{source} ({numSources}): {total}\n");
+                    }
+                }
+            }
+        }
+        /// <summary>
         /// Applies the new efficiency to the grid's systems.
         /// </summary>
         private void ApplyNewEfficiency()
@@ -410,6 +515,11 @@ namespace AHOD
             }
             currentAppliedEfficiency = Efficiency;
         }
+        /// <summary>
+        /// Apply the given productivity into a production block
+        /// </summary>
+        /// <param name="block">Production block</param>
+        /// <param name="efficiency">Productivity</param>
         private void ApplyProductivityEfficiency(MyCubeBlock block, float efficiency)
         {
             lg.File($"Applying productivity efficiency {efficiency:P0} to block {block.BlockDefinition.DisplayNameText}.", 4);
@@ -419,6 +529,11 @@ namespace AHOD
             IMyTerminalBlock terminalBlock = block as IMyTerminalBlock;
             terminalBlock?.SetDetailedInfoDirty();
         }
+        /// <summary>
+        /// Remove the given productivity from a production block
+        /// </summary>
+        /// <param name="block">Production block</param>
+        /// <param name="efficiency">Productivity</param>
         private void RemoveProductivityEfficiency(MyCubeBlock block, float efficiency)
         {
             lg.File($"Removing previously applied efficiency {efficiency:P0} from block {block.BlockDefinition.DisplayNameText}.", 4);
@@ -429,7 +544,7 @@ namespace AHOD
             terminalBlock?.SetDetailedInfoDirty();
         }
         /// <summary>
-        /// Recalculates the grid's efficiency based on current bed
+        /// Recalculates the grid's efficiency based on current block
         /// counts.
         /// </summary>
         private void RecalculateEfficency()
