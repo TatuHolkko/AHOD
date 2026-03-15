@@ -436,9 +436,9 @@ namespace AHOD
             lg.File($"Changing RequiredCount for group {groupName} by {amount}, new value {newValue}.", 3);
             if (newValue < 0)
             {
-                lg.File($"Warning: RequiredCount for group {groupName} went below zero. Resetting to zero.", 1);
-                lg.OnScreen($"Warning: RequiredCount for group {groupName} went below zero. Resetting to zero.", durationMs: 2000, level: 2, color: "Red");
-                RequiredCounts[groupName] = 0;
+                lg.File($"Warning: RequiredCount for group {groupName} went below zero. Removing tracking element.", 1);
+                lg.OnScreen($"Warning: RequiredCount for group {groupName} went below zero. Removing tracking element.", durationMs: 2000, level: 2, color: "Red");
+                RequiredCounts.Remove(groupName);
             }
             else if (newValue == 0)
             {
@@ -554,19 +554,25 @@ namespace AHOD
             {
                 string groupName = kvp.Key;
                 float required = kvp.Value;
-                int available = 0;
-                if (BlockCounts.ContainsKey(groupName))
-                {
-                    available = BlockCounts[groupName];
-                }
+                float requiredFloor = (float)Math.Floor(required);
                 if (required > 0)
                 {
-                    float groupEff = (float)available / required;
+                    int available = 0;
+                    float groupEff = 1;
+                    BlockCounts.TryGetValue(groupName, out available);
+                    if (requiredFloor > 0)
+                    {
+                        groupEff = available / requiredFloor;
+                    }
                     lg.File($"Group {groupName}: {available}/{required}, efficiency {groupEff:P0}.", 4);
                     if (groupEff < minEff)
                     {
                         minEff = groupEff;
                     }
+                }
+                else
+                {
+                    lg.File($"Warning: Required count for group {groupName} exist and is zero.", 2);
                 }
             }
             if (minEff < 0.1f)
