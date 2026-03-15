@@ -99,6 +99,12 @@ namespace AHOD
 
             GridGroup.GetGrids(cubeGrids);
             lg.File($"Scanning all {cubeGrids.Count} CubeGrids in group to initialize block counts and efficiency.", 2);
+            if (cubeGrids.Count > 0 && cubeGrids[0].Physics == null)
+            {
+                lg.File($"Initial CubeGrid detected as non-physical: {cubeGrids[0].DisplayName} (ID: {cubeGrids[0].EntityId}), aborting init.", 2);
+                cubeGrids.Clear();
+                return;
+            }
             foreach (IMyCubeGrid cubeGrid in cubeGrids)
             {
                 lg.File($"Initial CubeGrid added: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) to Grid instance.", 3);
@@ -122,6 +128,12 @@ namespace AHOD
         protected override void OnGridAdded(IMyCubeGrid cubeGrid, IMyGridGroupData prevGroup)
         {
             lg.File($"New CubeGrid added: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) to Grid instance.", 2);
+            if (cubeGrid.Physics == null)
+            {
+                lg.File($"CubeGrid detected as non-physical: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}), releasing Grid instance.", 2);
+                Release();
+                return;
+            }
             SubscribeCubeGrid(cubeGrid);
             RegisterGrid(cubeGrid);
             cubeGrids.Add(cubeGrid);
@@ -241,7 +253,6 @@ namespace AHOD
                 UnsubscribeCubeGrid(cubeGrid);
                 UnregisterGrid(cubeGrid);
             }
-            cubeGrids.Clear();
             if (BlockCounts.Count > 0 || RequiredCounts.Count > 0 || EfficiencyTargets.Count > 0)
             {
                 lg.File($"Warning: Grid being released still has tracked data: BlockCounts:{BlockCounts.Count}, RequiredCounts:{RequiredCounts.Count}, EfficiencyTargets:{EfficiencyTargets.Count}. Clearing data.", 1);
@@ -254,6 +265,7 @@ namespace AHOD
             {
                 lg.File($"Warning: Grid being released still has {InfoTargets.Count} subscribed info targets!", 1);
             }
+            cubeGrids.Clear();
             BlockCounts.Clear();
             RequiredCounts.Clear();
             EfficiencyTargets.Clear();
