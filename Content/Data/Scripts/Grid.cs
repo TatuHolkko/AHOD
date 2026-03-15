@@ -305,7 +305,7 @@ namespace AHOD
         /// <param name="block">Block to subscribe to</param>
         private void SubscribeBlock(IMyCubeBlock block)
         {
-            lg.File($"Subscribing to CubeBlock {BlockID(block, 1)} events.", 3);
+            lg.File($"Subscribing to CubeBlock {config.BlockID(block, 1)} events.", 3);
 
             Action handler = () => {
                 UpdateFunctionality(block);
@@ -326,7 +326,7 @@ namespace AHOD
         /// <param name="block">Block to unsubscribe from</param>
         private void UnsubscribeBlock(IMyCubeBlock block)
         {
-            lg.File($"Unsubscribing from CubeBlock {BlockID(block, 1)} events.", 3);
+            lg.File($"Unsubscribing from CubeBlock {config.BlockID(block, 1)} events.", 3);
             Action handler;
             if (FunctionalityEventHandlers.TryGetValue(block, out handler))
             {
@@ -335,7 +335,7 @@ namespace AHOD
             }
             else
             {
-                lg.File($"Warning: could not unsubscribe event handlers from {BlockID(block)}", 1);
+                lg.File($"Warning: could not unsubscribe event handlers from {config.BlockID(block)}", 1);
             }
 
             if (config.IsInfoBlock(block))
@@ -350,7 +350,7 @@ namespace AHOD
         /// <param name="block">Terminal block</param>
         private void SubscribeInfoTarget(IMyTerminalBlock block)
         {
-            lg.File($"Subscribing info target {BlockID(block, 1)}");
+            lg.File($"Subscribing info target {config.BlockID(block, 1)}");
             InfoTargets.Add(block);
             block.AppendingCustomInfo += SetInfo;
         }
@@ -361,10 +361,10 @@ namespace AHOD
         /// <param name="block">Terminal block</param>
         private void UnsubscribeInfoTarget(IMyTerminalBlock block)
         {
-            lg.File($"Unsubscribing info target {BlockID(block, 1)}");
+            lg.File($"Unsubscribing info target {config.BlockID(block, 1)}");
             if (!InfoTargets.Remove(block))
             {
-                lg.File($"Warning: Tried to unsubscribe from info target {BlockID(block)}, but it was not found.", 2);
+                lg.File($"Warning: Tried to unsubscribe from info target {config.BlockID(block)}, but it was not found.", 2);
             }
             block.AppendingCustomInfo -= SetInfo;
         }
@@ -381,7 +381,7 @@ namespace AHOD
                     IsActive = true;
                 }
             }
-            lg.File($"Adding block {BlockID(block, 1)}", 3);
+            lg.File($"Adding block {config.BlockID(block, 1)}", 3);
             if (config.IsTrackedBlock(block))
             {
                 RegisterBlock(block.FatBlock);
@@ -395,7 +395,7 @@ namespace AHOD
         /// <param name="block">Block to remove</param>
         public void RemoveBlock(IMySlimBlock block)
         {
-            lg.File($"Removing block {BlockID(block, 1)}", 3);
+            lg.File($"Removing block {config.BlockID(block, 1)}", 3);
             if (config.IsTrackedBlock(block))
             {
                 UnregisterBlock(block.FatBlock);
@@ -534,7 +534,7 @@ namespace AHOD
         /// <param name="efficiency">Productivity</param>
         private void ApplyProductivityEfficiency(MyCubeBlock block, float efficiency)
         {
-            lg.File($"Applying productivity efficiency {efficiency:P0} to block {BlockID(block, 2)}.", 4);
+            lg.File($"Applying productivity efficiency {efficiency:P0} to block {config.BlockID(block, 2)}.", 4);
             float additiveEfficiency = efficiency - 1f;
             block.UpgradeValues["Productivity"] += additiveEfficiency;
             block.CommitUpgradeValues();
@@ -548,7 +548,7 @@ namespace AHOD
         /// <param name="efficiency">Productivity</param>
         private void RemoveProductivityEfficiency(MyCubeBlock block, float efficiency)
         {
-            lg.File($"Removing previously applied efficiency {efficiency:P0} from block {BlockID(block, 2)}.", 4);
+            lg.File($"Removing previously applied efficiency {efficiency:P0} from block {config.BlockID(block, 2)}.", 4);
             float additiveEfficiency = efficiency - 1f;
             block.UpgradeValues["Productivity"] -= additiveEfficiency;
             block.CommitUpgradeValues();
@@ -628,19 +628,15 @@ namespace AHOD
         /// <param name="block">Block to register</param>
         private void RegisterBlock(IMyCubeBlock block)
         {
-            string subTypeId = block.BlockDefinition.SubtypeId;
-            lg.File($"Registering block {BlockID(block, 1)}.", 4);
-            if (config.GroupOfBlockSubtype.ContainsKey(subTypeId))
+            lg.File($"Registering block {config.BlockID(block, 1)}.", 4);
+            SubscribeBlock(block);
+            if (block.IsFunctional)
             {
-                SubscribeBlock(block);
-                if (block.IsFunctional)
-                {
-                    SetFunctional(block);
-                }
-                else
-                {
-                    lg.File($"Added block {BlockID(block, 1)} was not functional, count stays the same.", 4);
-                }
+                SetFunctional(block);
+            }
+            else
+            {
+                lg.File($"Added block {config.BlockID(block, 1)} was not functional, count stays the same.", 4);
             }
         }
         /// <summary>
@@ -649,19 +645,15 @@ namespace AHOD
         /// <param name="block">Block to unregister</param>
         public void UnregisterBlock(IMyCubeBlock block)
         {
-            string subTypeId = block.BlockDefinition.SubtypeId;
-            lg.File($"Unregistering block {BlockID(block, 1)}.", 4);
-            if (config.GroupOfBlockSubtype.ContainsKey(subTypeId))
+            lg.File($"Unregistering block {config.BlockID(block, 1)}.", 4);
+            UnsubscribeBlock(block);
+            if (block.IsFunctional)
             {
-                UnsubscribeBlock(block);
-                if (block.IsFunctional)
-                {
-                    SetNotFunctional(block);
-                }
-                else
-                {
-                    lg.File($"Removed block {BlockID(block, 1)} was not functional, count stays the same.", 4);
-                }
+                SetNotFunctional(block);
+            }
+            else
+            {
+                lg.File($"Removed block {config.BlockID(block, 1)} was not functional, count stays the same.", 4);
             }
         }
         /// <summary>
@@ -686,9 +678,8 @@ namespace AHOD
         /// <param name="block">Block to add</param>
         private void SetFunctional(IMyCubeBlock block)
         {
-            string subTypeId = block.BlockDefinition.SubtypeId;
-            string groupName = config.GroupOfBlockSubtype[subTypeId];
-            lg.File($"Detected {BlockID(block, 1)} becoming functional.", 4);
+            string groupName = config.GroupOf(block);
+            lg.File($"Detected {config.BlockID(block, 1)} becoming functional.", 4);
             ChangeGroupCount(groupName, 1);
             if (config.EfficiencyRequirements.ContainsKey(groupName))
             {
@@ -698,7 +689,7 @@ namespace AHOD
                 }
                 else
                 {
-                    lg.File($"Warning: Tried to register block {BlockID(block)} to efficiency targets, but it was already present.", 2);
+                    lg.File($"Warning: Tried to register block {config.BlockID(block)} to efficiency targets, but it was already present.", 2);
                 }
                 foreach (var req in config.EfficiencyRequirements[groupName])
                 {
@@ -712,9 +703,8 @@ namespace AHOD
         /// <param name="block">Block to remove</param>
         private void SetNotFunctional(IMyCubeBlock block)
         {
-            string subTypeId = block.BlockDefinition.SubtypeId;
-            string groupName = config.GroupOfBlockSubtype[subTypeId];
-            lg.File($"Detected {BlockID(block, 2)} becoming unfunctional.", 4);
+            string groupName = config.GroupOf(block);
+            lg.File($"Detected {config.BlockID(block, 2)} becoming unfunctional.", 4);
             ChangeGroupCount(groupName, -1);
             if (config.EfficiencyRequirements.ContainsKey(groupName))
             {
@@ -724,7 +714,7 @@ namespace AHOD
                 }
                 else
                 {
-                    lg.File($"Warning: Tried to unregister block {BlockID(block)} from efficiency targets, but it was not found.", 2);
+                    lg.File($"Warning: Tried to unregister block {config.BlockID(block)} from efficiency targets, but it was not found.", 2);
                 }
                 foreach (var req in config.EfficiencyRequirements[groupName])
                 {
@@ -776,61 +766,6 @@ namespace AHOD
             }
             lg.File($"WARNING: Could not determine if identity ID {identityId} is player controlled. Assuming it is.", 2);
             return true;
-        }
-        private string BlockID(IMyCubeBlock cubeBlock, int level = 3)
-        {
-            if (cubeBlock == null)
-            {
-                return "[null block]";
-            }
-            string name = "";
-            string dispName = "";
-            if (cubeBlock.DisplayName != null)
-            {
-                dispName = cubeBlock.DisplayName.Length > 0 ? $" '{cubeBlock.DisplayName}'": "" ;
-            }
-            string type = $"{cubeBlock.BlockDefinition.TypeIdString}/{cubeBlock.BlockDefinition.SubtypeId}";
-            string hex = $"{cubeBlock.EntityId:x10}";
-            string entId = $"{hex.Substring(hex.Length - 5, 5)}";
-            if (level == 0)
-            {
-                name = entId;
-            }
-            else if (level == 1)
-            {
-                name = type;
-            }
-            else if (level == 2)
-            {
-                name = $"{type}{dispName}";
-            }
-            else if (level == 3)
-            {
-                name = $"{type}{dispName} ({entId})";
-            }
-            else
-            {
-                name = "Unknown id level";
-            }
-            return $"[{name}]";
-        }
-        private string BlockID(IMySlimBlock slimBlock, int level = 3)
-        {
-            string name = "";
-            if (slimBlock == null)
-            {
-                name = "[null block]";
-            }
-            else if (slimBlock.FatBlock == null)
-            {
-                name = $"[{slimBlock.BlockDefinition.DisplayNameText}]";
-            }
-            else
-            {
-                return BlockID(slimBlock.FatBlock, level);
-            }
-
-            return name;
         }
         /// <summary>
         /// Rounds the efficiency to the nearest defined increment.

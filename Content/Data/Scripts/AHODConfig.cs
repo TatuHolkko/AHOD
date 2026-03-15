@@ -17,8 +17,7 @@ namespace AHOD
         public int DebugLevel = 1;
         public Dictionary<string, Dictionary<string, float>> EfficiencyRequirements => efficiencyReqField.Value;
         public Dictionary<string, HashSet<string>> BlockGroups => blockGroupsField.Value;
-        public Dictionary<string, string> GroupOfBlockSubtype = new Dictionary<string, string>();
-
+        Dictionary<string, string> groupOfBlockType = new Dictionary<string, string>();
         ConfigField<Dictionary<string, Dictionary<string, float>>> efficiencyReqField;
         ConfigField<Dictionary<string, HashSet<string>>> blockGroupsField;
         ConfigField<int> debugLevelField;
@@ -79,9 +78,111 @@ namespace AHOD
             {
                 return false;
             }
-            return GroupOfBlockSubtype.ContainsKey(slimBlock.FatBlock.BlockDefinition.SubtypeId);
+            return groupOfBlockType.ContainsKey(slimBlock.FatBlock.BlockDefinition.SubtypeId);
         }
+        /// <summary>
+        /// Try to determine the type of a given block
+        /// </summary>
+        /// <param name="block">Block to inspect</param>
+        /// <returns>The block type, if it can be determined, null otherwise</returns>
+        public string BlockTypeOf(IMyCubeBlock block)
+        {
+            if (block.BlockDefinition.SubtypeId.Length > 0)
+            {
+                return block.BlockDefinition.SubtypeId;
+            }
+            else
+            {
+                string baseTypeString = block.BlockDefinition.TypeIdString;
+                if (baseTypeString != null && baseTypeString.Length > "MyObjectBuilder_".Length)
+                {
+                    return baseTypeString.Substring("MyObjectBuilder_".Length);
+                }
+                else
+                {
+                    lg.File($"Warning: Can not recognize type of given block.", 1);
+                    return null;
+                }
+            }
+        }
+        /// <summary>
+        /// Try to determine the group of a given block
+        /// </summary>
+        /// <param name="block">Block to inspect</param>
+        /// <returns>Group name if it exists, null otherwise</returns>
+        public string GroupOf(IMyCubeBlock block)
+        {
+            string group = null;
+            groupOfBlockType.TryGetValue(BlockTypeOf(block), out group);
+            return group;
+        }
+        /// <summary>
+        /// Formulate an identification string of a block, useful for logging
+        /// </summary>
+        /// <param name="cubeBlock">Block to identify</param>
+        /// <param name="level">Level of detail</param>
+        /// <returns>An identification string</returns>
+        public string BlockID(IMyCubeBlock cubeBlock, int level = 3)
+        {
+            if (cubeBlock == null)
+            {
+                return "[null block]";
+            }
+            string name = "";
+            string dispName = "";
+            if (cubeBlock.DisplayName != null)
+            {
+                dispName = cubeBlock.DisplayName.Length > 0 ? $" '{cubeBlock.DisplayName}'": "" ;
+            }
+            string type = BlockTypeOf(cubeBlock);
+            string hex = $"{cubeBlock.EntityId:x10}";
+            string entId = $"{hex.Substring(hex.Length - 5, 5)}";
+            if (level == 0)
+            {
+                name = entId;
+            }
+            else if (level == 1)
+            {
+                name = type;
+            }
+            else if (level == 2)
+            {
+                name = $"{type}{dispName}";
+            }
+            else if (level == 3)
+            {
+                name = $"{type}{dispName} ({entId})";
+            }
+            else
+            {
+                name = "Unknown id level";
+            }
+            return $"[{name}]";
+        }
+        /// <summary>
+        /// Formulate an identification string of a block
+        /// </summary>
+        /// <param name="cubeBlock">Block to identify</param>
+        /// <param name="level">Level of detail</param>
+        /// <returns>An identification string</returns>
+        public string BlockID(IMySlimBlock slimBlock, int level = 3)
+        {
+            string name = "";
+            if (slimBlock == null)
+            {
+                name = "[null block]";
+            }
+            else if (slimBlock.FatBlock == null)
+            {
+                name = $"[{slimBlock.BlockDefinition.DisplayNameText}]";
+            }
+            else
+            {
+                return BlockID(slimBlock.FatBlock, level);
+            }
 
+            return name;
+        }
         public bool IsInfoBlock(IMyCubeBlock block)
         {
             if (block == null)
@@ -95,7 +196,7 @@ namespace AHOD
             }
             if (IsTrackedBlock(tblock.SlimBlock))
             {
-                if (GroupOfBlockSubtype[tblock.BlockDefinition.SubtypeId] == "Beds")
+                if (GroupOf(block) == "Beds")
                 {
                     return true;
                 }
@@ -105,13 +206,13 @@ namespace AHOD
 
         void CreateBlockGroupMappings()
         {
-            GroupOfBlockSubtype.Clear();
+            groupOfBlockType.Clear();
             foreach (var group in BlockGroups)
             {
                 foreach (var subtype in group.Value)
                 {
                     // Duplicates are not checked here, ValidateConfig does that
-                    GroupOfBlockSubtype[subtype] = group.Key;
+                    groupOfBlockType[subtype] = group.Key;
                 }
             }
         }
@@ -119,17 +220,17 @@ namespace AHOD
         bool ValidateLoadedConfig()
         {
             bool valid = true;
-            HashSet<string> allSubtypes = new HashSet<string>();
+            HashSet<string> allBlockTypes = new HashSet<string>();
             foreach (var group in BlockGroups)
             {
-                foreach (var subtype in group.Value)
+                foreach (var blockType in group.Value)
                 {
-                    if (allSubtypes.Contains(subtype))
+                    if (allBlockTypes.Contains(blockType))
                     {
-                        lg.File($"WARNING: Block subtype '{subtype}' is defined in multiple groups, which is not supported.", 0);
+                        lg.File($"WARNING: Block type '{blockType}' is defined in multiple groups, which is not supported.", 0);
                         valid = false;
                     }
-                    allSubtypes.Add(subtype);
+                    allBlockTypes.Add(blockType);
                 }
             }
             foreach (var reqDef in EfficiencyRequirements)
