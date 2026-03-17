@@ -94,7 +94,7 @@ namespace AHOD
             {
                 return false;
             }
-            return groupOfBlockType.ContainsKey(slimBlock.FatBlock.BlockDefinition.SubtypeId);
+            return groupOfBlockType.ContainsKey(BlockTypeOf(slimBlock.FatBlock));
         }
         /// <summary>
         /// Try to determine the type of a given block
