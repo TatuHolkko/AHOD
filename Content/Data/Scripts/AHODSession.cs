@@ -2,8 +2,10 @@ using Sandbox.Game.Entities;
 using VRage.Game.Components;
 using System.Collections.Generic;
 using VRage.Game.ModAPI;
-using System.Linq;
 using Sandbox.ModAPI;
+using System;
+using VRage.Utils;
+using VRage.Game;
 
 namespace AHOD
 {
@@ -24,18 +26,34 @@ namespace AHOD
         /// so that we can use a use a for-each loop without modifying the collection.
         /// </summary>
         bool manualRelease = false;
+        bool initialized = false;
         public override void LoadData()
         {
-            //TODO: What debug level to use before config is loaded? Logging might be needed to debug config loading.
-            lg = new Logger() { DebugLevel = 4 };
-            lg.Context = "MAIN";
-            lg.File("Loading AHODSession.", 2);
-            InitConfig();
-            lg.File("AHODSession loaded.", 2);
+            try
+            {
+                lg = new Logger
+                {
+                    DebugLevel = 4,
+                    Context = "MAIN"
+                };
+                lg.File("Loading AHODSession.", 2);
+                InitConfig();
+                lg.File("AHODSession loaded.", 2);
+                initialized = true;
+            }
+            catch (Exception e)
+            {
+                LogError(e);
+            }
         }
 
         public override void BeforeStart()
         {
+            if (!initialized)
+            {
+                MyAPIGateway.Utilities.InvokeOnGameThread(() => ThrowError("AHOD: Initialization failure."));
+                return;
+            }
             if (MyAPIGateway.Session.IsServer)
             {
                 BindGroupLogic();
@@ -46,22 +64,35 @@ namespace AHOD
                 lg.File("Instance is a client, skipping subscriptions.", 2);
             }
         }
+        public void ThrowError(string message)
+        {
+            throw new Exception(message);
+        }
 
         protected override void UnloadData()
         {
-            lg.File("Unloading AHODSession.", 2);
-            if (grids.Count > 0)
+            try
             {
-                lg.File($"Releasing {grids.Count} grids manually.", 2);
-                manualRelease = true;
-                foreach (Grid grid in grids)
+                lg.File("Unloading AHODSession.", 2);
+                if (grids.Count > 0)
                 {
-                    grid.ManualRelease();
+                    lg.File($"Releasing {grids.Count} grids manually.", 2);
+                    manualRelease = true;
+                    foreach (Grid grid in grids)
+                    {
+                        grid.ManualRelease();
+                    }
+                    manualRelease = false;
+                    grids.Clear();
                 }
-                manualRelease = false;
-                grids.Clear();
+                lg.File("AHODSession unloaded.", 2);
+                initialized = false;
+                lg = null;
             }
-            lg.File("AHODSession unloaded.", 2);
+            catch (Exception e)
+            {
+                LogError(e);
+            }
         }
         /// <summary>
         /// Callback for when a grid is released. Removes the grid from the session's grid list.
@@ -129,6 +160,14 @@ namespace AHOD
         {
             config = new AHODConfig(lg);
             config.Load();
+        }
+
+        private void LogError(Exception e)
+        {
+            MyLog.Default?.WriteLineAndConsole($"AHOD: ERROR on {GetType().FullName}: {e}");
+
+            if(MyAPIGateway.Session?.Player != null)
+                MyAPIGateway.Utilities?.ShowNotification($"[ERROR on {GetType().FullName}: Send SpaceEngineers.Log to mod author]", 10000, MyFontEnum.Red);
         }
     }
 }
