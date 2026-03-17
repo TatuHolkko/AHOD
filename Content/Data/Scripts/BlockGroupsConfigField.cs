@@ -26,7 +26,7 @@ namespace AHOD
                 var parts = groupEntry.Split(new char[] { ':' });
                 if (parts.Length != 2)
                 {
-                    lg.File($"WARNING: Invalid block group entry '{groupEntry}'. Expected format 'GroupName1:SubtypeId1,SubtypeId2,...;GroupName2:...'", 0);
+                    lg.File($"WARNING: Invalid block group entry '{groupEntry}'. Expected format 'GroupName1:BlockType1,BlockType2,...|GroupName2:...'", 0);
                     Valid = false;
                     return blockGroups;
                 }
@@ -37,16 +37,16 @@ namespace AHOD
                     Valid = false;
                     return blockGroups;
                 }
-                var subtypeIds = parts[1].Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                var blockTypes = parts[1].Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                                         .Select(s => s.Trim())
                                         .ToHashSet();
-                if (subtypeIds.Count == 0)
+                if (blockTypes.Count == 0)
                 {
-                    lg.File($"WARNING: No subtype IDs defined for group '{groupName}' in block group entry '{groupEntry}'.", 0);
+                    lg.File($"WARNING: No block types defined for group '{groupName}' in block group entry '{groupEntry}'.", 0);
                     Valid = false;
                     return blockGroups;
                 }
-                blockGroups[groupName] = subtypeIds;
+                blockGroups[groupName] = blockTypes;
             }
             Valid = true;
             return blockGroups;

@@ -24,7 +24,7 @@ namespace AHOD
                 var parts = requirementEntry.Split(new char[] { ':' });
                 if (parts.Length != 2)
                 {
-                    lg.File($"WARNING: Invalid efficiency requirement entry '{requirementEntry}'. Expected format 'GroupName1:ReqGroup1=Count1,ReqGroup2=Count2;GroupName2:...'", 0);
+                    lg.File($"WARNING: Invalid efficiency requirement entry '{requirementEntry}'. Expected format 'GroupName1:ReqGroup1=Count1,ReqGroup2=Count2|GroupName2:...'", 0);
                     Valid = false;
                     return efficiencyRequirements;
                 }
