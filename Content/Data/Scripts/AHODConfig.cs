@@ -17,6 +17,22 @@ namespace AHOD
         public int DebugLevel = 1;
         public Dictionary<string, Dictionary<string, float>> EfficiencyRequirements => efficiencyReqField.Value;
         public Dictionary<string, HashSet<string>> BlockGroups => blockGroupsField.Value;
+        readonly HashSet<string> infoBlocks = new HashSet<string>()
+        {
+            "LargeBlockBed",
+            "LargeBlockHalfBed",
+            "LargeBlockHalfBedOffset",
+            "LargeBlockInsetBed",
+            "LargeBlockBedFree",
+        };
+        readonly HashSet<string> prodBlocks = new HashSet<string>()
+        {
+            "LargeRefinery",
+            "LargeRefineryIndustrial",
+            "BasicAssembler",
+            "LargeAssemblerIndustrial",
+            "LargeAssembler",
+        };
         Dictionary<string, string> groupOfBlockType = new Dictionary<string, string>();
         ConfigField<Dictionary<string, Dictionary<string, float>>> efficiencyReqField;
         ConfigField<Dictionary<string, HashSet<string>>> blockGroupsField;
@@ -183,6 +199,33 @@ namespace AHOD
 
             return name;
         }
+        /// <summary>
+        /// Determine if the block has a productivity property,
+        /// which can be adjusted
+        /// </summary>
+        /// <param name="block">Block to examine</param>
+        /// <returns>True, if the block has a productivity property</returns>
+        public bool BlockHasProductivity(IMyCubeBlock block)
+        {
+            if (block == null)
+            {
+                return false;
+            }
+            if (IsTrackedBlock(block.SlimBlock))
+            {
+                if (prodBlocks.Contains(BlockTypeOf(block)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        /// <summary>
+        /// Determine if the block's detailed info panel in the terminal
+        /// can be used to report the grid's status
+        /// </summary>
+        /// <param name="block">Block to examine</param>
+        /// <returns>True, if the block can be used, false otherwise</returns>
         public bool IsInfoBlock(IMyCubeBlock block)
         {
             if (block == null)
@@ -196,7 +239,7 @@ namespace AHOD
             }
             if (IsTrackedBlock(tblock.SlimBlock))
             {
-                if (GroupOf(block) == "Beds")
+                if (infoBlocks.Contains(BlockTypeOf(tblock)))
                 {
                     return true;
                 }

@@ -9,3 +9,4 @@ Space engineers mod
 * Debug level is not read from config
 * Some blocks do not have a subtypeid, how to define them in config
 * Try catching errors? Some leave the game files corrupt if not caught
+* Weighted average instead of minimum when calculating efficiencies from several sources

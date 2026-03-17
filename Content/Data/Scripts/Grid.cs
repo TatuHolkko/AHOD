@@ -683,13 +683,20 @@ namespace AHOD
             ChangeGroupCount(groupName, 1);
             if (config.EfficiencyRequirements.ContainsKey(groupName))
             {
-                if (EfficiencyTargets.Add(block as MyCubeBlock))
+                if (config.BlockHasProductivity(block))
                 {
-                    ApplyProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
+                    if (EfficiencyTargets.Add(block as MyCubeBlock))
+                    {
+                        ApplyProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
+                    }
+                    else
+                    {
+                        lg.File($"Warning: Tried to register block {config.BlockID(block)} to efficiency targets, but it was already present.", 2);
+                    }
                 }
                 else
                 {
-                    lg.File($"Warning: Tried to register block {config.BlockID(block)} to efficiency targets, but it was already present.", 2);
+                    lg.File($"Block {config.BlockID(block, 1)} does not have productivity property, skipping target addition.", 3);
                 }
                 foreach (var req in config.EfficiencyRequirements[groupName])
                 {
@@ -708,13 +715,20 @@ namespace AHOD
             ChangeGroupCount(groupName, -1);
             if (config.EfficiencyRequirements.ContainsKey(groupName))
             {
-                if (EfficiencyTargets.Remove(block as MyCubeBlock))
+                if (config.BlockHasProductivity(block))
                 {
-                    RemoveProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
+                    if (EfficiencyTargets.Remove(block as MyCubeBlock))
+                    {
+                        RemoveProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
+                    }
+                    else
+                    {
+                        lg.File($"Warning: Tried to remove block {config.BlockID(block)} from efficiency targets, but it was not found.", 2);
+                    }
                 }
                 else
                 {
-                    lg.File($"Warning: Tried to unregister block {config.BlockID(block)} from efficiency targets, but it was not found.", 2);
+                    lg.File($"Block {config.BlockID(block, 1)} does not have productivity property, skipping target removal.", 3);
                 }
                 foreach (var req in config.EfficiencyRequirements[groupName])
                 {
