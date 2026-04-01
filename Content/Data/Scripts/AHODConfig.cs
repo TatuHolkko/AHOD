@@ -94,7 +94,39 @@ namespace AHOD
             {
                 return false;
             }
-            return groupOfBlockType.ContainsKey(BlockTypeOf(slimBlock.FatBlock));
+            return IsTrackedBlock(slimBlock.FatBlock);
+        }
+        public bool IsTrackedBlock(IMyCubeBlock cubeBlock)
+        {
+            if (cubeBlock == null)
+            {
+                return false;
+            }
+            return groupOfBlockType.ContainsKey(BlockTypeOf(cubeBlock));
+        }
+        public bool IsToggleTarget(IMyCubeBlock cubeBlock)
+        {
+            if (!IsRequirementSource(cubeBlock))
+            {
+                return false;
+            }
+            return !BlockHasProductivity(cubeBlock);
+        }
+        public bool IsRequirementSource(IMySlimBlock slimBlock)
+        {
+            if (slimBlock == null || slimBlock.FatBlock == null)
+            {
+                return false;
+            }
+            return IsRequirementSource(slimBlock.FatBlock);
+        }
+        public bool IsRequirementSource(IMyCubeBlock cubeBlock)
+        {
+            if (cubeBlock == null)
+            {
+                return false;
+            }
+            return EfficiencyRequirements.ContainsKey(GroupOf(cubeBlock));
         }
         /// <summary>
         /// Try to determine the type of a given block

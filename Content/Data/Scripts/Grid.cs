@@ -24,6 +24,7 @@ namespace AHOD
         Dictionary<string, float> RequiredCounts = new Dictionary<string, float>();
         HashSet<MyCubeBlock> EfficiencyTargets = new HashSet<MyCubeBlock>();
         HashSet<IMyTerminalBlock> InfoTargets = new HashSet<IMyTerminalBlock>();
+        Dictionary<IMyFunctionalBlock, ToggleTarget> ToggleTargets = new Dictionary<IMyFunctionalBlock, ToggleTarget>();
         /// <summary>
         /// Dictionary for keeping references of created event handlers
         /// </summary>
@@ -265,12 +266,17 @@ namespace AHOD
             {
                 lg.File($"Warning: Grid being released still has {InfoTargets.Count} subscribed info targets!", 1);
             }
+            if (ToggleTargets.Count > 0)
+            {
+                lg.File($"Warning: Grid being released still has {ToggleTargets.Count} subscribed toggle targets!", 1);
+            }
             cubeGrids.Clear();
             BlockCounts.Clear();
             RequiredCounts.Clear();
             EfficiencyTargets.Clear();
             FunctionalityEventHandlers.Clear();
             InfoTargets.Clear();
+            ToggleTargets.Clear();
             Efficiency = 1f;
             currentAppliedEfficiency = 1f;
             IsActive = false;
@@ -319,6 +325,13 @@ namespace AHOD
             {
                 SubscribeInfoTarget(block as IMyTerminalBlock);
             }
+            if (config.IsToggleTarget(block))
+            {
+                IMyFunctionalBlock fBlock = block as IMyFunctionalBlock;
+                SubscribeToggleTarget(fBlock);
+                fBlock.RefreshCustomInfo();
+                fBlock.SetDetailedInfoDirty();
+            }
         }
         /// <summary>
         /// Unsubscribe from block events
@@ -342,6 +355,10 @@ namespace AHOD
             {
                 UnsubscribeInfoTarget(block as IMyTerminalBlock);
             }
+            if (config.IsToggleTarget(block))
+            {
+                UnsubscribeToggleTarget(block as IMyFunctionalBlock);
+            }
         }
         /// <summary>
         /// Make the terminal block receive the grid info
@@ -350,7 +367,7 @@ namespace AHOD
         /// <param name="block">Terminal block</param>
         private void SubscribeInfoTarget(IMyTerminalBlock block)
         {
-            lg.File($"Subscribing info target {config.BlockID(block, 1)}");
+            lg.File($"Subscribing info target {config.BlockID(block, 2)}");
             InfoTargets.Add(block);
             block.AppendingCustomInfo += SetInfo;
         }
@@ -361,12 +378,57 @@ namespace AHOD
         /// <param name="block">Terminal block</param>
         private void UnsubscribeInfoTarget(IMyTerminalBlock block)
         {
-            lg.File($"Unsubscribing info target {config.BlockID(block, 1)}");
+            lg.File($"Unsubscribing info target {config.BlockID(block, 2)}");
             if (!InfoTargets.Remove(block))
             {
-                lg.File($"Warning: Tried to unsubscribe from info target {config.BlockID(block)}, but it was not found.", 2);
+                lg.File($"Warning: Tried to unsubscribe from info target {config.BlockID(block)}, but it was not found.", 1);
             }
             block.AppendingCustomInfo -= SetInfo;
+        }
+        private void SubscribeToggleTarget(IMyFunctionalBlock block)
+        {
+            lg.File($"Subscribing toggle target {config.BlockID(block, 2)}", 2);
+            ToggleTargets.Add(block, new ToggleTarget()
+            {
+                UserEnabled = block.Enabled,
+                Starved = false,
+                Block = block,
+                IgnoreHandler = false
+            });
+            block.EnabledChanged += EnabledChanged;
+            block.AppendingCustomInfo += SetToggleTargetInfo;
+        }
+        private void UnsubscribeToggleTarget(IMyFunctionalBlock block)
+        {
+            lg.File($"Unsubscribing toggle target {config.BlockID(block, 2)}", 2);
+            if (!ToggleTargets.Remove(block))
+            {
+                lg.File($"Warning: Tried to unsubscribe from toggle target {config.BlockID(block)}, but it was not found.", 1);
+            }
+            block.EnabledChanged -= EnabledChanged;
+            block.AppendingCustomInfo -= SetToggleTargetInfo;
+        }
+        private void EnabledChanged(IMyTerminalBlock block)
+        {
+            ToggleTarget tt;
+            if (ToggleTargets.TryGetValue(block as IMyFunctionalBlock, out tt))
+            {
+                lg.File($"Block {config.BlockID(block, 1)} changed enabled state to: {tt.Block.Enabled}", 3);
+                if (tt.IgnoreHandler)
+                {
+                    tt.IgnoreHandler = false;
+                    block.RefreshCustomInfo();
+                    block.SetDetailedInfoDirty();
+                    return;
+                }
+                tt.UserEnabled = tt.Block.Enabled;
+                block.RefreshCustomInfo();
+                block.SetDetailedInfoDirty();
+            }
+            else
+            {
+                lg.File($"Warning: {config.BlockID(block)} triggered EnabledChanged, but block is not tracked.", 1);
+            }
         }
         /// <summary>
         /// Adds a block to the grid's block count calculations and updates efficiency.
@@ -467,7 +529,7 @@ namespace AHOD
         /// </summary>
         private void MarkInfoDirty()
         {
-            lg.File("Marked info as dirty.");
+            lg.File("Marked info as dirty.", 3);
             foreach(IMyTerminalBlock block in InfoTargets)
             {
                 block.RefreshCustomInfo();
@@ -513,6 +575,32 @@ namespace AHOD
                         sb.Append($"      -{source} ({numSources}): {total}\n");
                     }
                 }
+            }
+        }
+        private void SetToggleTargetInfo(IMyTerminalBlock block, StringBuilder sb)
+        {
+            ToggleTarget tt;
+            if (!ToggleTargets.TryGetValue(block as IMyFunctionalBlock, out tt))
+            {
+                lg.File($"Warning: Tried to fill detailed info to a toggle target {config.BlockID(block)} that is not tracked.", 1);
+                return;
+            }
+            sb.Append("AHOD Status:\n");
+            if (tt.UserEnabled)
+            {
+                sb.Append(" User enabled\n");
+            }
+            else
+            {
+                sb.Append(" User disabled\n");
+            }
+            if (!tt.Starved)
+            {
+                sb.Append(" Needs met\n");
+            }
+            else
+            {
+                sb.Append(" Needs unmet\n");
             }
         }
         /// <summary>
@@ -685,18 +773,31 @@ namespace AHOD
             {
                 if (config.BlockHasProductivity(block))
                 {
+                    lg.File($"Adding block {config.BlockID(block, 1)} to productivity targets.", 3);
                     if (EfficiencyTargets.Add(block as MyCubeBlock))
                     {
                         ApplyProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
                     }
                     else
                     {
-                        lg.File($"Warning: Tried to register block {config.BlockID(block)} to efficiency targets, but it was already present.", 2);
+                        lg.File($"Warning: Tried to register block {config.BlockID(block)} to productivity targets, but it was already present.", 2);
                     }
                 }
                 else
                 {
-                    lg.File($"Block {config.BlockID(block, 1)} does not have productivity property, skipping target addition.", 3);
+                    IMyFunctionalBlock fBlock = block as IMyFunctionalBlock;
+                    if (fBlock != null)
+                    {
+                        ToggleTarget tt;
+                        if (ToggleTargets.TryGetValue(block as IMyFunctionalBlock, out tt))
+                        {
+                            tt.UserEnabled = tt.Block.Enabled;
+                        }
+                    }
+                    else
+                    {
+                        lg.File($"Warning: Could not cast {config.BlockID(block)} as functional block.", 1);
+                    }
                 }
                 foreach (var req in config.EfficiencyRequirements[groupName])
                 {
@@ -717,18 +818,31 @@ namespace AHOD
             {
                 if (config.BlockHasProductivity(block))
                 {
+                    lg.File($"Removing block {config.BlockID(block, 1)} from productivity targets.", 3);
                     if (EfficiencyTargets.Remove(block as MyCubeBlock))
                     {
                         RemoveProductivityEfficiency(block as MyCubeBlock, currentAppliedEfficiency);
                     }
                     else
                     {
-                        lg.File($"Warning: Tried to remove block {config.BlockID(block)} from efficiency targets, but it was not found.", 2);
+                        lg.File($"Warning: Tried to remove block {config.BlockID(block)} from productivity targets, but it was not found.", 1);
                     }
                 }
                 else
                 {
-                    lg.File($"Block {config.BlockID(block, 1)} does not have productivity property, skipping target removal.", 3);
+                    IMyFunctionalBlock fBlock = block as IMyFunctionalBlock;
+                    if (fBlock != null)
+                    {
+                        ToggleTarget tt;
+                        if (ToggleTargets.TryGetValue(fBlock, out tt))
+                        {
+                            fBlock.Enabled = tt.UserEnabled;
+                        }
+                    }
+                    else
+                    {
+                        lg.File($"Warning: Could not cast {config.BlockID(block)} as functional block.", 1);
+                    }
                 }
                 foreach (var req in config.EfficiencyRequirements[groupName])
                 {
@@ -798,6 +912,14 @@ namespace AHOD
         private float RoundRequirement(float value)
         {
             return (float)System.Math.Round(value * 100f) / 100f;
+        }
+
+        private class ToggleTarget
+        {
+            public bool UserEnabled;
+            public bool Starved;
+            public bool IgnoreHandler;
+            public IMyFunctionalBlock Block;
         }
     }
 }
