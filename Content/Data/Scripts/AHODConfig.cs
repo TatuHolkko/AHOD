@@ -15,6 +15,7 @@ namespace AHOD
         const string IniSection = "AHOD";
         public bool Valid = true;
         public int DebugLevel = 1;
+        public int ToggleInterval => toggleIntervalField.Value;
         public Dictionary<string, Dictionary<string, float>> EfficiencyRequirements => efficiencyReqField.Value;
         public Dictionary<string, HashSet<string>> BlockGroups => blockGroupsField.Value;
         readonly HashSet<string> infoBlocks = new HashSet<string>()
@@ -37,6 +38,7 @@ namespace AHOD
         ConfigField<Dictionary<string, Dictionary<string, float>>> efficiencyReqField;
         ConfigField<Dictionary<string, HashSet<string>>> blockGroupsField;
         ConfigField<int> debugLevelField;
+        ConfigField<int> toggleIntervalField;
         Logger lg;
 
         public AHODConfig(Logger logger = null)
@@ -52,6 +54,7 @@ namespace AHOD
             efficiencyReqField = new EfficiencyRequirementsConfigField(nameof(EfficiencyRequirements), IniSection, lg);
             blockGroupsField = new BlockGroupsConfigField(nameof(BlockGroups), IniSection, lg);
             debugLevelField = new DebugLevelConfigField(nameof(DebugLevel), IniSection, lg);
+            toggleIntervalField = new ToggleIntervalConfigField(nameof(ToggleInterval), IniSection, lg);
             CreateBlockGroupMappings();
             Valid = ValidateLoadedConfig();
             if (!Valid)
@@ -339,6 +342,7 @@ namespace AHOD
             allPresent &= LoadConfigField(iniParser, blockGroupsField);
             allPresent &= LoadConfigField(iniParser, efficiencyReqField);
             allPresent &= LoadConfigField(iniParser, debugLevelField);
+            allPresent &= LoadConfigField(iniParser, toggleIntervalField);
             return allPresent;
         }
 
@@ -347,6 +351,7 @@ namespace AHOD
             blockGroupsField.Save(iniParser);
             efficiencyReqField.Save(iniParser);
             debugLevelField.Save(iniParser);
+            toggleIntervalField.Save(iniParser);
         }
 
         bool LoadConfigField<T>(MyIni iniParser, ConfigField<T> field)
