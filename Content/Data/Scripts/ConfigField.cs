@@ -35,6 +35,7 @@ namespace AHOD
             }
             else
             {
+                Valid = true;
                 Value = DefaultValue();
             }
         }
