@@ -74,6 +74,7 @@ namespace AHOD
         List<IMyCubeGrid> cubeGrids = new List<IMyCubeGrid>();
         AHODConfig config;
         Logger lg;
+        Random random = new Random();
         Guid guid = Guid.Empty;
         /// <summary>
         /// Initializes a new instance of the Grid class.
@@ -221,6 +222,15 @@ namespace AHOD
                 }
                 ApplyNewEfficiency();
             }
+        }
+        public void TimedUpdate()
+        {
+            if (!IsActive)
+            {
+                lg.File("Grid is not active, skipping timed update.", 5);
+                return;
+            }
+            RandomizeToggleTargetStates();
         }
         /// <summary>
         /// Callback for when a CubeGrid is marked for close.
@@ -393,7 +403,7 @@ namespace AHOD
                 UserEnabled = block.Enabled,
                 Starved = false,
                 Block = block,
-                IgnoreHandler = false
+                ModRequest = false
             });
             block.EnabledChanged += EnabledChanged;
             block.AppendingCustomInfo += SetToggleTargetInfo;
@@ -401,7 +411,14 @@ namespace AHOD
         private void UnsubscribeToggleTarget(IMyFunctionalBlock block)
         {
             lg.File($"Unsubscribing toggle target {config.BlockID(block, 2)}", 2);
-            if (!ToggleTargets.Remove(block))
+            ToggleTarget tt;
+            if (ToggleTargets.TryGetValue(block, out tt))
+            {
+                tt.ModRequest = true;
+                block.Enabled = tt.UserEnabled;
+                ToggleTargets.Remove(block);
+            }
+            else
             {
                 lg.File($"Warning: Tried to unsubscribe from toggle target {config.BlockID(block)}, but it was not found.", 1);
             }
@@ -413,21 +430,75 @@ namespace AHOD
             ToggleTarget tt;
             if (ToggleTargets.TryGetValue(block as IMyFunctionalBlock, out tt))
             {
-                lg.File($"Block {config.BlockID(block, 1)} changed enabled state to: {tt.Block.Enabled}", 3);
-                if (tt.IgnoreHandler)
+                if (tt.ModRequest)
                 {
-                    tt.IgnoreHandler = false;
-                    block.RefreshCustomInfo();
-                    block.SetDetailedInfoDirty();
-                    return;
+                    tt.ModRequest = false;
+                    lg.File($"Block {config.BlockID(block, 1)}: {(tt.Block.Enabled?"Enabled":"Disabled")} (mod)", 3);
                 }
-                tt.UserEnabled = tt.Block.Enabled;
+                else
+                {
+                    lg.File($"Block {config.BlockID(block, 1)}: {(tt.Block.Enabled?"Enabled":"Disabled")} (user)", 3);
+                    if (tt.Starved && tt.Block.Enabled)
+                    {
+                        tt.UserEnabled = !tt.UserEnabled;
+                        tt.ModRequest = true;
+                        tt.Block.Enabled = false;
+                    }
+                    else
+                    {
+                        tt.UserEnabled = tt.Block.Enabled;
+                    }
+                }
                 block.RefreshCustomInfo();
                 block.SetDetailedInfoDirty();
             }
             else
             {
                 lg.File($"Warning: {config.BlockID(block)} triggered EnabledChanged, but block is not tracked.", 1);
+            }
+        }
+        private void RandomizeToggleTargetStates()
+        {
+            lg.File("Randomizing toggle target states.", 3);
+            foreach(var kvp in ToggleTargets)
+            {
+                IMyFunctionalBlock block = kvp.Key;
+                if (!block.IsFunctional)
+                {
+                    lg.File($"Toggle target {config.BlockID(block, 1)} is not functional, skipping.", 5);
+                    continue;
+                }
+                ToggleTarget tt = kvp.Value;
+                bool starved = random.NextDouble() > Efficiency;
+                bool infoDirty = false;
+                if (tt.Starved != starved)
+                {
+                    tt.Starved = starved;
+                    infoDirty = true;
+                }
+                if (tt.Starved && block.Enabled)
+                {
+                    lg.File($"Toggle target {config.BlockID(block, 1)} disabled by mod.", 4);
+                    tt.ModRequest = true;
+                    block.Enabled = false;
+                    infoDirty = true;
+                }
+                else if (!tt.Starved && tt.UserEnabled && !block.Enabled)
+                {
+                    lg.File($"Toggle target {config.BlockID(block, 1)} enabled by mod.", 4);
+                    tt.ModRequest = true;
+                    block.Enabled = true;
+                    infoDirty = true;
+                }
+                else
+                {
+                    lg.File($"Toggle target {config.BlockID(block, 1)} stays {(block.Enabled?"Enabled":"Disabled")}.", 5);
+                }
+                if (infoDirty)
+                {
+                    block.RefreshCustomInfo();
+                    block.SetDetailedInfoDirty();
+                }
             }
         }
         /// <summary>
@@ -544,7 +615,7 @@ namespace AHOD
         /// <param name="sb">String builder</param>
         private void SetInfo(IMyTerminalBlock block, StringBuilder sb)
         {
-            sb.Append("AHOD Status:\n");
+            sb.Append("\nAHOD Status:\n");
             sb.Append($" Efficiency: {Efficiency:P0}");
             sb.Append("  Counts:\n");
             foreach(KeyValuePair<string, float> blockReq in RequiredCounts)
@@ -585,7 +656,7 @@ namespace AHOD
                 lg.File($"Warning: Tried to fill detailed info to a toggle target {config.BlockID(block)} that is not tracked.", 1);
                 return;
             }
-            sb.Append("AHOD Status:\n");
+            sb.Append("\nAHOD Status:\n");
             if (tt.UserEnabled)
             {
                 sb.Append(" User enabled\n");
@@ -783,22 +854,6 @@ namespace AHOD
                         lg.File($"Warning: Tried to register block {config.BlockID(block)} to productivity targets, but it was already present.", 2);
                     }
                 }
-                else
-                {
-                    IMyFunctionalBlock fBlock = block as IMyFunctionalBlock;
-                    if (fBlock != null)
-                    {
-                        ToggleTarget tt;
-                        if (ToggleTargets.TryGetValue(block as IMyFunctionalBlock, out tt))
-                        {
-                            tt.UserEnabled = tt.Block.Enabled;
-                        }
-                    }
-                    else
-                    {
-                        lg.File($"Warning: Could not cast {config.BlockID(block)} as functional block.", 1);
-                    }
-                }
                 foreach (var req in config.EfficiencyRequirements[groupName])
                 {
                     ChangeRequirement(req.Key, req.Value);
@@ -826,22 +881,6 @@ namespace AHOD
                     else
                     {
                         lg.File($"Warning: Tried to remove block {config.BlockID(block)} from productivity targets, but it was not found.", 1);
-                    }
-                }
-                else
-                {
-                    IMyFunctionalBlock fBlock = block as IMyFunctionalBlock;
-                    if (fBlock != null)
-                    {
-                        ToggleTarget tt;
-                        if (ToggleTargets.TryGetValue(fBlock, out tt))
-                        {
-                            fBlock.Enabled = tt.UserEnabled;
-                        }
-                    }
-                    else
-                    {
-                        lg.File($"Warning: Could not cast {config.BlockID(block)} as functional block.", 1);
                     }
                 }
                 foreach (var req in config.EfficiencyRequirements[groupName])
@@ -918,7 +957,7 @@ namespace AHOD
         {
             public bool UserEnabled;
             public bool Starved;
-            public bool IgnoreHandler;
+            public bool ModRequest;
             public IMyFunctionalBlock Block;
         }
     }

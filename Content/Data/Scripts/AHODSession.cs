@@ -27,10 +27,13 @@ namespace AHOD
         /// </summary>
         bool manualRelease = false;
         bool initialized = false;
+        bool isHost = false;
+        DateTime lastUpdateTime = new DateTime(0);
         public override void LoadData()
         {
             try
             {
+                isHost = MyAPIGateway.Session.IsServer;
                 lg = new Logger
                 {
                     DebugLevel = 5,
@@ -55,7 +58,7 @@ namespace AHOD
                 MyAPIGateway.Utilities.InvokeOnGameThread(() => ThrowError("AHOD: Initialization failure."));
                 return;
             }
-            if (MyAPIGateway.Session.IsServer)
+            if (isHost)
             {
                 BindGroupLogic();
                 InitializeExistingGroups();
@@ -65,6 +68,21 @@ namespace AHOD
                 lg.File("Instance is a client, skipping subscriptions.", 2);
             }
         }
+        public override void UpdateBeforeSimulation()
+        {
+            if (isHost)
+            {
+                if ((MyAPIGateway.Session.GameDateTime - lastUpdateTime).Seconds > config.ToggleInterval)
+                {
+                    lastUpdateTime = MyAPIGateway.Session.GameDateTime;
+                    foreach (Grid grid in grids)
+                    {
+                        grid.TimedUpdate();
+                    }
+                }
+            }
+        }
+
         public void ThrowError(string message)
         {
             throw new Exception(message);
