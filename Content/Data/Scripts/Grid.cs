@@ -110,7 +110,7 @@ namespace AHOD
             {
                 lg.File($"Initial CubeGrid added: {cubeGrid.DisplayName} (ID: {cubeGrid.EntityId}) to Grid instance.", 3);
                 bool temp = lg.Enabled;
-                lg.Enabled = false;
+                lg.Enabled = lg.DebugLevel > 3;
                 SubscribeCubeGrid(cubeGrid);
                 RegisterGrid(cubeGrid);
                 if (!IsActive)

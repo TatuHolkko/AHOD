@@ -14,7 +14,7 @@ namespace AHOD
         const string FileName = "Config.ini";
         const string IniSection = "AHOD";
         public bool Valid = true;
-        public int DebugLevel = 1;
+        public int DebugLevel => debugLevelField.Value;
         public int ToggleInterval => toggleIntervalField.Value;
         public Dictionary<string, Dictionary<string, float>> EfficiencyRequirements => efficiencyReqField.Value;
         public Dictionary<string, HashSet<string>> BlockGroups => blockGroupsField.Value;

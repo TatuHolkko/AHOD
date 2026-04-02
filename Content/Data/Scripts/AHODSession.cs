@@ -33,12 +33,13 @@ namespace AHOD
             {
                 lg = new Logger
                 {
-                    DebugLevel = 4,
+                    DebugLevel = 5,
                     Context = "MAIN"
                 };
                 lg.File("Loading AHODSession.", 2);
                 InitConfig();
                 lg.File("AHODSession loaded.", 2);
+                lg.DebugLevel = config.DebugLevel;
                 initialized = true;
             }
             catch (Exception e)
