@@ -24,7 +24,7 @@ namespace AHOD
                 var parts = requirementEntry.Split(new char[] { ':' });
                 if (parts.Length != 2)
                 {
-                    lg.File($"WARNING: Invalid efficiency requirement entry '{requirementEntry}'. Expected format 'GroupName1:ReqGroup1=Count1,ReqGroup2=Count2|GroupName2:...'", 0);
+                    lg.File($"WARNING: Invalid efficiency requirement entry '{requirementEntry}'. Expected format 'GroupName1:ReqGroup1-Count1,ReqGroup2-Count2|GroupName2:...'", 0);
                     Valid = false;
                     return efficiencyRequirements;
                 }
@@ -49,7 +49,7 @@ namespace AHOD
                     float count = 0;
                     if (reqPair.Length != 2 || !float.TryParse(reqPair[1].Trim(), out count))
                     {
-                        lg.File($"WARNING: Invalid requirement '{reqPart}' in entry '{requirementEntry}'. Expected format 'ReqGroup=Count'", 0);
+                        lg.File($"WARNING: Invalid requirement '{reqPart}' in entry '{requirementEntry}'. Expected format 'ReqGroup-Count'", 0);
                         Valid = false;
                         return efficiencyRequirements;
                     }
